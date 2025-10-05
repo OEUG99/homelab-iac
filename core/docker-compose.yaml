@@ -1,0 +1,131 @@
+version: "3.9"
+
+networks:
+  edge:
+    driver: bridge
+
+volumes:
+  portainer_data:
+  uptime_kuma_data:
+  traefik_data:
+  dozzle_data:
+
+services:
+
+  #####################################################################
+  # 🔀 Traefik (reverse proxy)
+  #####################################################################
+  traefik:
+    image: traefik:latest
+    container_name: traefik
+    restart: unless-stopped
+    networks: [edge]
+    ports:
+      - "80:80"       # http://localhost
+      - "443:443"     # https://localhost
+    command:
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
+      - "--certificatesresolvers.le.acme.email=${LE_EMAIL}"
+      - "--certificatesresolvers.le.acme.storage=/letsencrypt/acme.json"
+      - "--certificatesresolvers.le.acme.httpchallenge=true"
+      - "--certificatesresolvers.le.acme.httpchallenge.entrypoint=web"
+      - "--api.dashboard=true"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - traefik_data:/letsencrypt
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.traefik.rule=Host(`traefik.lab.yourdomain.com`)"
+      - "traefik.http.routers.traefik.entrypoints=web"
+      - "traefik.http.services.traefik.loadbalancer.server.port=8080"
+
+  #####################################################################
+  # 🧰 Portainer
+  #####################################################################
+  portainer:
+    image: portainer/portainer-ce:latest
+    container_name: portainer
+    restart: unless-stopped
+    networks: [edge]
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - portainer_data:/data
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.portainer.rule=Host(`portainer.lab.yourdomain.com`)"
+      - "traefik.http.routers.portainer.entrypoints=web"
+      - "traefik.http.services.portainer.loadbalancer.server.port=9000"
+    ports:
+      - "9000:9000"    # http://localhost:9000
+
+  #####################################################################
+  # 🌡️ Uptime Kuma
+  #####################################################################
+  uptime-kuma:
+    image: louislam/uptime-kuma:latest
+    container_name: uptime-kuma
+    restart: unless-stopped
+    networks: [edge]
+    volumes:
+      - uptime_kuma_data:/app/data
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.kuma.rule=Host(`kuma.lab.yourdomain.com`)"
+      - "traefik.http.routers.kuma.entrypoints=web"
+      - "traefik.http.services.kuma.loadbalancer.server.port=3001"
+    ports:
+      - "3001:3001"    # http://localhost:3001
+
+  #####################################################################
+  # 🔄 Watchtower
+  #####################################################################
+  watchtower:
+    image: containrrr/watchtower:latest
+    container_name: watchtower
+    restart: unless-stopped
+    networks: [edge]
+    environment:
+      - TZ=${TZ}
+      - WATCHTOWER_CLEANUP=true
+      - WATCHTOWER_LABEL_ENABLE=true
+      - WATCHTOWER_SCHEDULE=0 0 4 * * *
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+
+  #####################################################################
+  # 📜 Dozzle (live logs)
+  #####################################################################
+  dozzle:
+    image: amir20/dozzle:latest
+    container_name: dozzle
+    restart: unless-stopped
+    networks: [edge]
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - dozzle_data:/data
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.dozzle.rule=Host(`logs.lab.yourdomain.com`)"
+      - "traefik.http.routers.dozzle.entrypoints=web"
+      - "traefik.http.services.dozzle.loadbalancer.server.port=8080"
+    ports:
+      - "8888:8080"    # http://localhost:8888
+
+  #####################################################################
+  # 🧪 whoami (test app)
+  #####################################################################
+  whoami:
+    image: traefik/whoami:latest
+    container_name: whoami
+    restart: unless-stopped
+    networks: [edge]
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.whoami.rule=Host(`whoami.lab.yourdomain.com`)"
+      - "traefik.http.routers.whoami.entrypoints=web"
+      - "traefik.http.services.whoami.loadbalancer.server.port=80"
+    ports:
+      - "8081:80"      # http://localhost:8081
