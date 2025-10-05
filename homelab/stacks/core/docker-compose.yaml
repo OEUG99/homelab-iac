@@ -41,3 +41,8 @@ services:
       - portainer_data:/data
     ports:
       - "9000:9000"        # http://localhost:9000
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.portainer.rule=Host(`portainer.silentgarden.org`)
+      - traefik.http.routers.portainer.entrypoints=web
+      - traefik.http.services.portainer.loadbalancer.server.port=9000
