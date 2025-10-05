@@ -29,7 +29,7 @@ services:
       - DNS=${DNS}
       - TZ=${TZ}
     restart: unless-stopped
-    env_file: ['.env']
+    env_file: [ '.env' ]
 
   qbittorrent:
     image: lscr.io/linuxserver/qbittorrent
@@ -44,7 +44,7 @@ services:
       - "${BASE_PATH}/qbittorrent:/config"
       - "${BASE_PATH}/media/downloads:/downloads"
     restart: unless-stopped
-    env_file: ['.env']
+    env_file: [ '.env' ]
 
   prowlarr:
     image: lscr.io/linuxserver/prowlarr:latest
@@ -55,7 +55,7 @@ services:
       - "${BASE_PATH}/config/prowlarr:/config"
       - "${BASE_PATH}/media/downloads:/downloads"
     restart: unless-stopped
-    env_file: ['.env']
+    env_file: [ '.env' ]
 
   sonarr:
     image: lscr.io/linuxserver/sonarr:latest
@@ -67,7 +67,7 @@ services:
       - "${BASE_PATH}/media/tv-shows:/data/tvshows"
       - "${BASE_PATH}/media/downloads:/downloads"
     restart: unless-stopped
-    env_file: ['.env']
+    env_file: [ '.env' ]
 
   radarr:
     image: lscr.io/linuxserver/radarr:latest
@@ -79,7 +79,7 @@ services:
       - "${BASE_PATH}/media/movies:/data/movies"
       - "${BASE_PATH}/media/downloads:/downloads"
     restart: unless-stopped
-    env_file: ['.env']
+    env_file: [ '.env' ]
 
   tdarr:
     image: ghcr.io/haveagitgat/tdarr:latest
@@ -101,7 +101,7 @@ services:
       - "${BASE_PATH}/transcode:/temp"
       - "${BASE_PATH}/media:/media"
     restart: unless-stopped
-    env_file: ['.env']
+    env_file: [ '.env' ]
 
   tdarr-node:
     image: ghcr.io/haveagitgat/tdarr_node:latest
@@ -122,7 +122,7 @@ services:
       - "${BASE_PATH}/transcode:/temp"
       - "${BASE_PATH}/media:/media"
     restart: unless-stopped
-    env_file: ['.env']
+    env_file: [ '.env' ]
 
   sabnzbd:
     image: lscr.io/linuxserver/sabnzbd
@@ -138,7 +138,7 @@ services:
       - "${BASE_PATH}/media/downloads:/downloads"
       - "${BASE_PATH}/media/music:/data/music"
     restart: unless-stopped
-    env_file: ['.env']
+    env_file: [ '.env' ]
 
   headphones:
     image: linuxserver/headphones
@@ -155,7 +155,7 @@ services:
       - "${BASE_PATH}/media/music:/music"
       - "${BASE_PATH}/media/downloads:/downloads"
     restart: unless-stopped
-    env_file: ['.env']
+    env_file: [ '.env' ]
 
   jellyseerr:
     image: fallenbagel/jellyseerr:latest
@@ -165,7 +165,7 @@ services:
     volumes:
       - "${BASE_PATH}/config/jellyseerr:/app/config"
     restart: unless-stopped
-    env_file: ['.env']
+    env_file: [ '.env' ]
 
   homarr:
     image: ghcr.io/ajnart/homarr:latest
@@ -177,7 +177,7 @@ services:
       - "${BASE_PATH}/homarr/icons:/app/public/icons"
       - "${BASE_PATH}/media:/data"
     restart: unless-stopped
-    env_file: ['.env']
+    env_file: [ '.env' ]
 
   jellyfin:
     image: lscr.io/linuxserver/jellyfin
@@ -193,7 +193,7 @@ services:
       - "${BASE_PATH}/media/music:/data/Music"
       - "${BASE_PATH}/media/books:/data/Books"
     restart: unless-stopped
-    env_file: ['.env']
+    env_file: [ '.env' ]
 
   flaresolverr:
     image: ghcr.io/flaresolverr/flaresolverr:latest
@@ -203,4 +203,4 @@ services:
       - LOG_LEVEL=info
       - TZ=${TZ}
     restart: unless-stopped
-    env_file: ['.env']
+    env_file: [ '.env' ]
