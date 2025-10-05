@@ -1,3 +1,5 @@
+version: "3.9"
+
 networks:
   edge:
     driver: bridge
@@ -6,6 +8,28 @@ volumes:
   portainer_data:
 
 services:
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: cloudflared
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN}
+    networks: [edge]
+    environment:
+      - TZ=${TZ}
+
+  traefik:
+    image: traefik:v3.1
+    container_name: traefik
+    restart: unless-stopped
+    networks: [edge]
+    command:
+      - --providers.docker=true
+      - --providers.docker.exposedbydefault=false
+      - --entrypoints.web.address=:80
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    ports:
+      - "80:80"            # http://localhost
 
   portainer:
     image: portainer/portainer-ce:latest
@@ -17,4 +41,3 @@ services:
       - portainer_data:/data
     ports:
       - "9000:9000"        # http://localhost:9000
-      - "9443:9443"        # HTTPS
