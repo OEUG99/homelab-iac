@@ -155,6 +155,8 @@ services:
       - "5055:5055"
     volumes:
       - "${BASE_PATH}/config/jellyseerr:/app/config"
+    networks:
+      - bridge
     restart: unless-stopped
 
   homarr:
@@ -181,6 +183,8 @@ services:
       - "${BASE_PATH}/media/tv-shows:/data/TVShows"
       - "${BASE_PATH}/media/music:/data/Music"
       - "${BASE_PATH}/media/books:/data/Books"
+    networks:
+      - bridge
     restart: unless-stopped
 
   flaresolverr:
