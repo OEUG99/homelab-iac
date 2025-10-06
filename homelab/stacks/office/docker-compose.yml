@@ -10,11 +10,15 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set in .env}
     volumes:
       - /Volumes/Office/db:/var/lib/postgresql/data
+    ports:
+      - "${POSTGRES_PORT:-5433}:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-nextcloud} -d ${POSTGRES_DB:-nextcloud}"]
       interval: 10s
       timeout: 5s
       retries: 10
+    networks:
+      - nextcloud
     restart: unless-stopped
 
   redis:
@@ -25,6 +29,10 @@ services:
     # command: ["redis-server", "--appendonly", "yes", "--requirepass", "${REDIS_PASSWORD}"]
     volumes:
       - /Volumes/Office/redis:/data
+    ports:
+      - "${REDIS_PORT:-6380}:6379"
+    networks:
+      - nextcloud
     restart: unless-stopped
 
   app:
@@ -35,6 +43,8 @@ services:
       - redis
     ports:
       - "${NEXTCLOUD_HTTP_PORT:-8080}:80"
+    networks:
+      - nextcloud
     environment:
       # Database connection
       POSTGRES_HOST: db
@@ -59,5 +69,6 @@ services:
       - /Volumes/Office/data:/var/www/html/data
     restart: unless-stopped
 
-# Remove named volumes since they're no longer needed
-volumes: {}
+networks:
+  nextcloud:
+    driver: bridge
