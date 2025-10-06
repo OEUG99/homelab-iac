@@ -9,7 +9,7 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-nextcloud}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set in .env}
     volumes:
-      - nc_db:/var/lib/postgresql/data
+      - /Volume/office/db:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-nextcloud} -d ${POSTGRES_DB:-nextcloud}"]
       interval: 10s
@@ -24,7 +24,7 @@ services:
     # If you set REDIS_PASSWORD, uncomment next line:
     # command: ["redis-server", "--appendonly", "yes", "--requirepass", "${REDIS_PASSWORD}"]
     volumes:
-      - nc_redis:/data
+      - /Volume/office/redis:/data
     restart: unless-stopped
 
   app:
@@ -53,16 +53,11 @@ services:
       TZ: ${TZ:-UTC}
     volumes:
       # Keep app code, config, and data separate and persistent
-      - nc_html:/var/www/html
-      - nc_apps:/var/www/html/custom_apps
-      - nc_config:/var/www/html/config
-      - nc_data:/var/www/html/data
+      - /Volume/office/html:/var/www/html
+      - /Volume/office/apps:/var/www/html/custom_apps
+      - /Volume/office/config:/var/www/html/config
+      - /Volume/office/data:/var/www/html/data
     restart: unless-stopped
 
-volumes:
-  nc_db:
-  nc_redis:
-  nc_html:
-  nc_apps:
-  nc_config:
-  nc_data:
+# Remove named volumes since they're no longer needed
+volumes: {}
