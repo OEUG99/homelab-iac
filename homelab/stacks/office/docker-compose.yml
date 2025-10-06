@@ -105,7 +105,7 @@ services:
     restart: unless-stopped
 
   immich-machine-learning:
-    image: ghcr.io/immich-app/immich-machine-learning:release
+    image: ghcr.io/immich-app/immich-machine-learning:v2.0.1
     container_name: immich-ml
     environment:
       - TZ=${TZ}
