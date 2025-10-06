@@ -1,73 +1,74 @@
-version: "3.9"
-
 services:
   db:
-    image: postgres:16
-    container_name: nc-db
+    image: mariadb:10.11
+    container_name: seafile-db
     environment:
-      POSTGRES_DB: ${POSTGRES_DB:-nextcloud}
-      POSTGRES_USER: ${POSTGRES_USER:-nextcloud}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set in .env}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?set in .env}
+      # Seafile will create/populate these on first run
+      MYSQL_LOG_CONSOLE: "true"
     volumes:
-      - /Volumes/Office/db:/var/lib/postgresql/data
+      - /Volumes/Office/seafile/db:/var/lib/mysql
     ports:
-      - "5433:5432"
+      - "3307:3306"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-nextcloud} -d ${POSTGRES_DB:-nextcloud}"]
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -p${MYSQL_ROOT_PASSWORD:?set in .env} --silent"]
       interval: 10s
       timeout: 5s
       retries: 10
     networks:
-      - nextcloud
+      - seafile
     restart: unless-stopped
 
-  redis:
-    image: redis:7-alpine
-    container_name: nc-redis
-    command: ["redis-server", "--appendonly", "yes"]
-    # If you set REDIS_PASSWORD, uncomment next line:
-    # command: ["redis-server", "--appendonly", "yes", "--requirepass", "${REDIS_PASSWORD}"]
-    volumes:
-      - /Volumes/Office/redis:/data
-    ports:
-      - "${REDIS_PORT:-6380}:6379"
+  memcached:
+    image: memcached:1.6-alpine
+    container_name: seafile-memcached
+    command: ["-m", "${MEMCACHED_MEMORY_MB:-256}"]
+    healthcheck:
+      test: ["CMD-SHELL", 'printf "version\r\n" | nc -w 2 127.0.0.1 11211 || exit 1']
+      interval: 10s
+      timeout: 5s
+      retries: 10
     networks:
-      - nextcloud
+      - seafile
     restart: unless-stopped
 
-  app:
-    image: nextcloud:29-apache
-    container_name: nextcloud
+  seafile:
+    image: seafileltd/seafile-mc:latest
+    container_name: seafile
     depends_on:
-      - db
-      - redis
+      db:
+        condition: service_healthy
+      memcached:
+        condition: service_healthy
     ports:
-      - "8080:80"
-    networks:
-      - nextcloud
+      - "8081:80"        # Web UI (change host port if you need)
+      # - "8082:8082"    # Optional: file server direct port if you expose it separately
     environment:
-      # Database connection
-      POSTGRES_HOST: db
-      POSTGRES_DB: ${POSTGRES_DB:-nextcloud}
-      POSTGRES_USER: ${POSTGRES_USER:-nextcloud}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set in .env}
-
-      # Redis cache (Nextcloud auto-wires this into config.php)
-      REDIS_HOST: redis
-      # REDIS_HOST_PASSWORD: ${REDIS_PASSWORD}   # if you enabled requirepass above
+      DB_HOST: db
+      DB_ROOT_PASSWD: ${MYSQL_ROOT_PASSWORD:?set in .env}
 
       # General
-      NEXTCLOUD_TRUSTED_DOMAINS: ${NEXTCLOUD_TRUSTED_DOMAINS:-localhost}
-      PHP_MEMORY_LIMIT: ${PHP_MEMORY_LIMIT:-512M}
-      PHP_UPLOAD_LIMIT: ${PHP_UPLOAD_LIMIT:-10G}
-      TZ: ${TZ:-UTC}
+      SEAFILE_SERVER_HOSTNAME: ${SEAFILE_SERVER_HOSTNAME:-localhost}
+      SEAFILE_ADMIN_EMAIL: ${SEAFILE_ADMIN_EMAIL:-admin@example.com}
+      SEAFILE_ADMIN_PASSWORD: ${SEAFILE_ADMIN_PASSWORD:?set in .env}
+      TIME_ZONE: ${TZ:-UTC}
+
+      # Optional tuning
+      SEAFILE_SERVER_LETSENCRYPT: "false"   # Use your reverse proxy/TLS termination
+      ENABLE_JSON_LOG: "true"
     volumes:
-      # Keep app code, config, and data separate and persistent
-      - /Volumes/Office/apps:/var/www/html/custom_apps
-      - /Volumes/Office/config:/var/www/html/config
-      - /Volumes/Office/data:/var/www/html/data
+      # Seafile image expects a single shared dir; it will structure subdirs under /shared
+      - /Volumes/Office/seafile/data:/shared
+      - /Volumes/Office/seafile/logs:/var/log/seafile
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1/ || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 20
+    networks:
+      - seafile
     restart: unless-stopped
 
 networks:
-  nextcloud:
+  seafile:
     driver: bridge
