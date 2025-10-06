@@ -9,7 +9,7 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-nextcloud}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set in .env}
     volumes:
-      - /Volume/office/db:/var/lib/postgresql/data
+      - /Volumes/Office/db:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-nextcloud} -d ${POSTGRES_DB:-nextcloud}"]
       interval: 10s
@@ -24,7 +24,7 @@ services:
     # If you set REDIS_PASSWORD, uncomment next line:
     # command: ["redis-server", "--appendonly", "yes", "--requirepass", "${REDIS_PASSWORD}"]
     volumes:
-      - /Volume/office/redis:/data
+      - /Volumes/Office/redis:/data
     restart: unless-stopped
 
   app:
