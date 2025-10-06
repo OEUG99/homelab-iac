@@ -53,10 +53,10 @@ services:
       TZ: ${TZ:-UTC}
     volumes:
       # Keep app code, config, and data separate and persistent
-      - /Volume/office/html:/var/www/html
-      - /Volume/office/apps:/var/www/html/custom_apps
-      - /Volume/office/config:/var/www/html/config
-      - /Volume/office/data:/var/www/html/data
+      - /Volumes/Office/html:/var/www/html
+      - /Volumes/Office/apps:/var/www/html/custom_apps
+      - /Volumes/Office/config:/var/www/html/config
+      - /Volumes/Office/data:/var/www/html/data
     restart: unless-stopped
 
 # Remove named volumes since they're no longer needed
