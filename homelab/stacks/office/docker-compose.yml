@@ -1,155 +1,68 @@
 version: "3.9"
 
 services:
-  # =========================
-  # NEXTCLOUD (linuxserver)
-  # =========================
-  nextcloud:
-    image: lscr.io/linuxserver/nextcloud:latest
-    container_name: nextcloud
-    depends_on:
-      - nextcloud-db
-      - nextcloud-redis
-    environment:
-      - PUID=${PUID}
-      - PGID=${PGID}
-      - TZ=${TZ}
-      # Optional tuning for PHP memory, upload limits, etc.:
-      # - PHP_MEMORY_LIMIT=1024M
-      # - PHP_UPLOAD_LIMIT=10G
-    volumes:
-      - "${NEXTCLOUD_CONFIG_DIR:-${BASE_PATH}/config/nextcloud}:/config"
-      - "${NEXTCLOUD_DATA_PATH:-${BASE_PATH}/media/nextcloud}:/data"
-    ports:
-      # linuxserver/nextcloud serves HTTPS on 443 and HTTP on 80 inside the container.
-      - "${NEXTCLOUD_HTTP_PORT:-8080}:443"
-      # If you also want HTTP exposed, uncomment the next line:
-      # - "8081:80"
-    networks:
-      - bridge
-    restart: unless-stopped
-
-  nextcloud-db:
+  db:
     image: postgres:16
-    container_name: nextcloud-db
+    container_name: nc-db
     environment:
-      - POSTGRES_DB=${POSTGRES_DB_NEXTCLOUD:-nextcloud}
-      - POSTGRES_USER=${POSTGRES_USER_NEXTCLOUD:-nextcloud}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD_NEXTCLOUD}
+      POSTGRES_DB: ${POSTGRES_DB:-nextcloud}
+      POSTGRES_USER: ${POSTGRES_USER:-nextcloud}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set in .env}
     volumes:
-      - "${NEXTCLOUD_DB_DATA:-${BASE_PATH}/nextcloud/postgres}:/var/lib/postgresql/data"
+      - nc_db:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER_NEXTCLOUD:-nextcloud} -d ${POSTGRES_DB_NEXTCLOUD:-nextcloud}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-nextcloud} -d ${POSTGRES_DB:-nextcloud}"]
       interval: 10s
       timeout: 5s
       retries: 10
-    networks:
-      - bridge
     restart: unless-stopped
 
-  nextcloud-redis:
-    image: redis:alpine
-    container_name: nextcloud-redis
+  redis:
+    image: redis:7-alpine
+    container_name: nc-redis
     command: ["redis-server", "--appendonly", "yes"]
-    # If you set REDIS_PASSWORD_NEXTCLOUD, enable auth:
-    # command: ["redis-server", "--appendonly", "yes", "--requirepass", "${REDIS_PASSWORD_NEXTCLOUD}"]
-    volumes:
-      - "${NEXTCLOUD_REDIS_DATA:-${BASE_PATH}/nextcloud/redis}:/data"
-    networks:
-      - bridge
-    restart: unless-stopped
-
-  # =========================
-  # IMMICH (photo/video hub)
-  # =========================
-  immich-proxy:
-    image: ghcr.io/immich-app/immich-proxy:v2.0.1
-    container_name: immich-proxy
-    depends_on:
-      - immich-server
-    environment:
-      - TZ=${TZ}
-      - IMMICH_SERVER_URL=http://immich-server:3001
-    ports:
-      - "${IMMICH_PORT:-2283}:2283"
-    networks:
-      - bridge
-    restart: unless-stopped
-
-  immich-server:
-    image: ghcr.io/immich-app/immich-server:v2.0.1
-    container_name: immich-server
-    depends_on:
-      - immich-db
-      - immich-redis
-    environment:
-      - TZ=${TZ}
-      - LOG_LEVEL=${IMMICH_LOG_LEVEL:-info}
-      - JWT_SECRET=${JWT_SECRET}
-      - UPLOAD_LOCATION=${UPLOAD_LOCATION:-${BASE_PATH}/immich/library}
-      - DB_HOST=${DB_HOST:-immich-db}
-      - DB_PORT=${DB_PORT:-5432}
-      - DB_USERNAME=${DB_USERNAME:-immich}
-      - DB_PASSWORD=${DB_PASSWORD}
-      - DB_DATABASE_NAME=${DB_DATABASE_NAME:-immich}
-      - REDIS_HOST=${REDIS_HOST:-immich-redis}
-      - REDIS_PORT=${REDIS_PORT:-6379}
-      - REDIS_PASSWORD=${REDIS_PASSWORD}
-    volumes:
-      - "${UPLOAD_LOCATION:-${BASE_PATH}/immich/library}:/usr/src/app/upload"
-      - "${IMMICH_CACHE_DIR:-${BASE_PATH}/immich/cache}:/cache"
-      # Optional one-time/bulk import mount:
-      - "${IMMICH_IMPORT_DIR:-${BASE_PATH}/immich/import}:/import:ro"
-    networks:
-      - bridge
-    restart: unless-stopped
-
-  immich-machine-learning:
-    image: ghcr.io/immich-app/immich-machine-learning:v2.0.1
-    container_name: immich-ml
-    environment:
-      - TZ=${TZ}
-      - LOG_LEVEL=${IMMICH_LOG_LEVEL:-info}
-      - TRANSFORMERS_CACHE=/cache
-    depends_on:
-      - immich-server
-    volumes:
-      - "${IMMICH_CACHE_DIR:-${BASE_PATH}/immich/cache}:/cache"
-    networks:
-      - bridge
-    restart: unless-stopped
-
-  immich-db:
-    # Postgres with required extensions for Immich
-    image: ghcr.io/immich-app/immich-postgres:15
-    container_name: immich-db
-    environment:
-      - POSTGRES_USER=${DB_USERNAME:-immich}
-      - POSTGRES_PASSWORD=${DB_PASSWORD}
-      - POSTGRES_DB=${DB_DATABASE_NAME:-immich}
-    volumes:
-      - "${IMMICH_DB_DATA:-${BASE_PATH}/immich/postgres}:/var/lib/postgresql/data"
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME:-immich} -d ${DB_DATABASE_NAME:-immich}"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-    networks:
-      - bridge
-    restart: unless-stopped
-
-  immich-redis:
-    image: redis:alpine
-    container_name: immich-redis
-    command: ["redis-server", "--appendonly", "yes"]
-    # If you set REDIS_PASSWORD, enable auth:
+    # If you set REDIS_PASSWORD, uncomment next line:
     # command: ["redis-server", "--appendonly", "yes", "--requirepass", "${REDIS_PASSWORD}"]
     volumes:
-      - "${IMMICH_REDIS_DATA:-${BASE_PATH}/immich/redis}:/data"
-    networks:
-      - bridge
+      - nc_redis:/data
     restart: unless-stopped
 
-networks:
-  bridge:
-    driver: bridge
+  app:
+    image: nextcloud:29-apache
+    container_name: nextcloud
+    depends_on:
+      - db
+      - redis
+    ports:
+      - "${NEXTCLOUD_HTTP_PORT:-8080}:80"
+    environment:
+      # Database connection
+      POSTGRES_HOST: db
+      POSTGRES_DB: ${POSTGRES_DB:-nextcloud}
+      POSTGRES_USER: ${POSTGRES_USER:-nextcloud}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set in .env}
+
+      # Redis cache (Nextcloud auto-wires this into config.php)
+      REDIS_HOST: redis
+      # REDIS_HOST_PASSWORD: ${REDIS_PASSWORD}   # if you enabled requirepass above
+
+      # General
+      NEXTCLOUD_TRUSTED_DOMAINS: ${NEXTCLOUD_TRUSTED_DOMAINS:-localhost}
+      PHP_MEMORY_LIMIT: ${PHP_MEMORY_LIMIT:-512M}
+      PHP_UPLOAD_LIMIT: ${PHP_UPLOAD_LIMIT:-10G}
+      TZ: ${TZ:-UTC}
+    volumes:
+      # Keep app code, config, and data separate and persistent
+      - nc_html:/var/www/html
+      - nc_apps:/var/www/html/custom_apps
+      - nc_config:/var/www/html/config
+      - nc_data:/var/www/html/data
+    restart: unless-stopped
+
+volumes:
+  nc_db:
+  nc_redis:
+  nc_html:
+  nc_apps:
+  nc_config:
+  nc_data:
