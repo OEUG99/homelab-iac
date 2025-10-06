@@ -42,7 +42,7 @@ services:
       - db
       - redis
     ports:
-      - "${NEXTCLOUD_HTTP_PORT:-8080}:80"
+      - "8080:80"
     networks:
       - nextcloud
     environment:
