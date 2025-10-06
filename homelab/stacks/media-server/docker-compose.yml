@@ -195,3 +195,7 @@ services:
       - LOG_LEVEL=info
       - TZ=${TZ}
     restart: unless-stopped
+
+networks:
+  bridge:
+    driver: bridge
