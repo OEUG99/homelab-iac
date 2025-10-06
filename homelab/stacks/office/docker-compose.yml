@@ -1,74 +1,57 @@
 services:
   db:
-    image: mariadb:10.11
-    container_name: seafile-db
+    image: ${SEAFILE_DB_IMAGE:-mariadb:10.11}
+    container_name: seafile-mysql
+    restart: unless-stopped
     environment:
-      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?set in .env}
-      # Seafile will create/populate these on first run
-      MYSQL_LOG_CONSOLE: "true"
+      - MYSQL_ROOT_PASSWORD=${INIT_SEAFILE_MYSQL_ROOT_PASSWORD:?Variable is not set or empty}
+      - MYSQL_LOG_CONSOLE=true
+      - MARIADB_AUTO_UPGRADE=1
     volumes:
-      - /Volumes/Office/seafile/db:/var/lib/mysql
-    ports:
-      - "3307:3306"
+      - ${SEAFILE_MYSQL_VOLUME:-./data/mysql}:/var/lib/mysql
+    networks:
+      - seafile-net
     healthcheck:
-      test: ["CMD-SHELL", "mysqladmin ping -h localhost -p${MYSQL_ROOT_PASSWORD:?set in .env} --silent"]
-      interval: 10s
+      test: ["CMD", "/usr/local/bin/healthcheck.sh", "--connect", "--mariadbupgrade", "--innodb_initialized"]
+      interval: 20s
+      start_period: 30s
       timeout: 5s
       retries: 10
-    networks:
-      - seafile
-    restart: unless-stopped
 
   memcached:
-    image: memcached:1.6-alpine
+    image: ${SEAFILE_MEMCACHED_IMAGE:-memcached:1.6.29}
     container_name: seafile-memcached
-    command: ["-m", "${MEMCACHED_MEMORY_MB:-256}"]
-    healthcheck:
-      test: ["CMD-SHELL", 'printf "version\r\n" | nc -w 2 127.0.0.1 11211 || exit 1']
-      interval: 10s
-      timeout: 5s
-      retries: 10
-    networks:
-      - seafile
     restart: unless-stopped
+    entrypoint: memcached -m 256
+    networks:
+      - seafile-net
 
   seafile:
-    image: seafileltd/seafile-mc:latest
+    image: ${SEAFILE_IMAGE:-seafileltd/seafile-mc:12.0-latest}
     container_name: seafile
+    restart: unless-stopped
     depends_on:
       db:
         condition: service_healthy
-      memcached:
-        condition: service_healthy
     ports:
-      - "8081:80"        # Web UI (change host port if you need)
-      # - "8082:8082"    # Optional: file server direct port if you expose it separately
-    environment:
-      DB_HOST: db
-      DB_ROOT_PASSWD: ${MYSQL_ROOT_PASSWORD:?set in .env}
-
-      # General
-      SEAFILE_SERVER_HOSTNAME: ${SEAFILE_SERVER_HOSTNAME:-localhost}
-      SEAFILE_ADMIN_EMAIL: ${SEAFILE_ADMIN_EMAIL:-admin@example.com}
-      SEAFILE_ADMIN_PASSWORD: ${SEAFILE_ADMIN_PASSWORD:?set in .env}
-      TIME_ZONE: ${TZ:-UTC}
-
-      # Optional tuning
-      SEAFILE_SERVER_LETSENCRYPT: "false"   # Use your reverse proxy/TLS termination
-      ENABLE_JSON_LOG: "true"
+      - "${SEAFILE_HTTP_PORT:-8081}:80"
     volumes:
-      # Seafile image expects a single shared dir; it will structure subdirs under /shared
-      - /Volumes/Office/seafile/data:/shared
-      - /Volumes/Office/seafile/logs:/var/log/seafile
-    healthcheck:
-      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1/ || exit 1"]
-      interval: 15s
-      timeout: 5s
-      retries: 20
+      - ${SEAFILE_VOLUME:-./data/seafile}:/shared
+    environment:
+      - DB_HOST=${SEAFILE_MYSQL_DB_HOST:-db}
+      - DB_PORT=${SEAFILE_MYSQL_DB_PORT:-3306}
+      - DB_USER=${SEAFILE_MYSQL_DB_USER:-seafile}
+      - DB_ROOT_PASSWD=${INIT_SEAFILE_MYSQL_ROOT_PASSWORD:?Variable is not set or empty}
+      - DB_PASSWORD=${SEAFILE_MYSQL_DB_PASSWORD:?Variable is not set or empty}
+      - TIME_ZONE=${TIME_ZONE:-Etc/UTC}
+      - JWT_PRIVATE_KEY=${JWT_PRIVATE_KEY:?Variable is not set or empty}
+      - SEAFILE_SERVER_HOSTNAME=${SEAFILE_SERVER_HOSTNAME:-seafile.example.com}
+      - SEAFILE_SERVER_PROTOCOL=${SEAFILE_SERVER_PROTOCOL:-http}
+      - INIT_SEAFILE_ADMIN_EMAIL=${INIT_SEAFILE_ADMIN_EMAIL:-admin@example.com}
+      - INIT_SEAFILE_ADMIN_PASSWORD=${INIT_SEAFILE_ADMIN_PASSWORD:?Variable is not set or empty}
     networks:
-      - seafile
-    restart: unless-stopped
+      - seafile-net
 
 networks:
-  seafile:
+  seafile-net:
     driver: bridge
