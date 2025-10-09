@@ -74,8 +74,8 @@ services:
       - "5601:5601"
     environment:
       - OPENSEARCH_HOSTS=https://wazuh-indexer:9200
-      - OPENSEARCH_USERNAME=admin
-      - OPENSEARCH_PASSWORD=${INDEXER_PASSWORD}
+      - DASHBOARD_USERNAME=admin
+      - DASHBOARD_PASSWORD=${INDEXER_PASSWORD}
       - WAZUH_API_URL=https://wazuh-manager
       - API_USERNAME=wazuh-wui
       - API_PASSWORD=${API_PASSWORD}
