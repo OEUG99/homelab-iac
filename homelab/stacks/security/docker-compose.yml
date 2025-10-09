@@ -1,85 +1,116 @@
 version: "3.9"
 
 services:
+  # 0) Write certs.yml into an internal volume (no host mounts needed)
+  write-certs-yml:
+    image: alpine:3.20
+    command: |
+      /bin/sh -c '
+        set -e
+        mkdir -p /config
+        cat >/config/certs.yml << "EOF"
+        nodes:
+          indexer:
+            name: wazuh-indexer
+            ip: [wazuh-indexer, 127.0.0.1]
+          manager:
+            name: wazuh-manager
+            ip: [wazuh-manager, 127.0.0.1]
+          dashboard:
+            name: wazuh-dashboard
+            ip: [wazuh-dashboard, 127.0.0.1]
+        EOF
+        echo "Wrote /config/certs.yml"
+      '
+    volumes:
+      - wazuh_config:/config
+    restart: "no"
+
+  # 1) Generate self-signed certs once using the config above
+  gen-certs:
+    image: wazuh/wazuh-certs-generator:0.0.2
+    depends_on: [write-certs-yml]
+    volumes:
+      - wazuh_certs:/certificates
+      - wazuh_config:/config
+    restart: "no"
+
+  # 2) OpenSearch (Wazuh Indexer) with TLS enabled using generated certs
   wazuh-indexer:
     image: wazuh/wazuh-indexer:4.13.1
+    depends_on: [gen-certs]
+    entrypoint: ["/bin/sh","-c"]
+    command: >
+      while [ ! -f /usr/share/opensearch/config/certs/indexer.pem ]; do
+        echo "Waiting for certs..."; sleep 2;
+      done;
+      exec /usr/local/bin/docker-entrypoint.sh
     environment:
-      - "cluster.name=wazuh"
-      - "discovery.type=single-node"
-      - "bootstrap.memory_lock=true"
-      - "OPENSEARCH_JAVA_OPTS=-Xms2g -Xmx2g"
-      # --- Security plugin TLS (HTTP + transport) ---
-      - "plugins.security.ssl.http.enabled=true"
-      - "plugins.security.ssl.http.pemcert_filepath=/usr/share/opensearch/config/certs/indexer.pem"
-      - "plugins.security.ssl.http.pemkey_filepath=/usr/share/opensearch/config/certs/indexer-key.pem"
-      - "plugins.security.ssl.http.pemtrustedcas_filepath=/usr/share/opensearch/config/certs/root-ca.pem"
-      - "plugins.security.ssl.transport.pemcert_filepath=/usr/share/opensearch/config/certs/indexer.pem"
-      - "plugins.security.ssl.transport.pemkey_filepath=/usr/share/opensearch/config/certs/indexer-key.pem"
-      - "plugins.security.ssl.transport.pemtrustedcas_filepath=/usr/share/opensearch/config/certs/root-ca.pem"
-      # allow the security index to init on first boot (single-node)
-      - "plugins.security.allow_default_init_securityindex=true"
-      # initial admin password (you can also set via file/secret)
-      - "OPENSEARCH_INITIAL_ADMIN_PASSWORD=${INDEXER_PASSWORD}"
+      - cluster.name=wazuh
+      - discovery.type=single-node
+      - bootstrap.memory_lock=true
+      - OPENSEARCH_JAVA_OPTS=-Xms2g -Xmx2g
+      # TLS (HTTP + transport)
+      - plugins.security.ssl.http.enabled=true
+      - plugins.security.ssl.http.pemcert_filepath=/usr/share/opensearch/config/certs/indexer.pem
+      - plugins.security.ssl.http.pemkey_filepath=/usr/share/opensearch/config/certs/indexer-key.pem
+      - plugins.security.ssl.http.pemtrustedcas_filepath=/usr/share/opensearch/config/certs/root-ca.pem
+      - plugins.security.ssl.transport.pemcert_filepath=/usr/share/opensearch/config/certs/indexer.pem
+      - plugins.security.ssl.transport.pemkey_filepath=/usr/share/opensearch/config/certs/indexer-key.pem
+      - plugins.security.ssl.transport.pemtrustedcas_filepath=/usr/share/opensearch/config/certs/root-ca.pem
+      - plugins.security.allow_default_init_securityindex=true
+      # Set initial admin password for the indexer (used by manager & dashboard)
+      - OPENSEARCH_INITIAL_ADMIN_PASSWORD=SecretPassword
     ulimits:
       memlock: { soft: -1, hard: -1 }
     volumes:
       - indexer-data:/usr/share/opensearch/data
-      # mount the generated certs from the shared volume
       - wazuh_certs:/usr/share/opensearch/config/certs:ro
     ports:
       - "9200:9200"
     healthcheck:
-      # curl -k for self-signed; auth required when security is on
-      test: ["CMD", "curl", "-ksf", "-u", "admin:${INDEXER_PASSWORD}", "https://localhost:9200"]
+      test: ["CMD","curl","-ksf","-u","admin:SecretPassword","https://localhost:9200"]
       interval: 30s
       timeout: 10s
       retries: 10
 
+  # 3) Wazuh Manager (trusts the Indexer CA and authenticates to Indexer)
   wazuh-manager:
     image: wazuh/wazuh-manager:4.13.1
     depends_on: [wazuh-indexer]
     environment:
-      # Manager -> Indexer over HTTPS with auth
-      - "INDEXER_URL=${INDEXER_URL}"                 # e.g. https://wazuh-indexer:9200
-      - "INDEXER_USERNAME=${INDEXER_USERNAME}"       # e.g. admin
-      - "INDEXER_PASSWORD=${INDEXER_PASSWORD}"       # matches OPENSEARCH_INITIAL_ADMIN_PASSWORD
-      # Manager validates indexer with CA
-      - "INDEXER_CA_CERT=/etc/ssl/indexer/root-ca.pem"
+      - INDEXER_URL=https://wazuh-indexer:9200
+      - INDEXER_USERNAME=admin
+      - INDEXER_PASSWORD=SecretPassword
+      - INDEXER_CA_CERT=/etc/ssl/indexer/root-ca.pem
+    volumes:
+      - manager-data:/var/ossec/data
+      - wazuh_certs:/etc/ssl/indexer:ro
     ports:
       - "1514:1514/udp"   # syslog/agents
       - "1515:1515"       # agent enrollment
       - "55000:55000"     # API
-    volumes:
-      - manager-data:/var/ossec/data
-      # Provide the CA so manager can validate indexer
-      - wazuh_certs:/etc/ssl/indexer:ro
 
+  # 4) Wazuh Dashboard (trusts the Indexer CA and logs in with admin)
   wazuh-dashboard:
     image: wazuh/wazuh-dashboard:4.13.1
     depends_on: [wazuh-indexer, wazuh-manager]
     environment:
-      # Dashboards -> Indexer over HTTPS
-      - "INDEXER_URL=${INDEXER_URL}"                 # e.g. https://wazuh-indexer:9200
-      - "INDEXER_USERNAME=${INDEXER_USERNAME}"
-      - "INDEXER_PASSWORD=${INDEXER_PASSWORD}"
-      # Dashboard -> Manager (API) over HTTP by default; add TLS later if desired
-      - "WAZUH_API_URL=http://wazuh-manager:55000"
-      # Optional: set UI admin user/password (first-run bootstrap)
-      - "OPENSEARCH_DASHBOARDS_USERNAME=${DASHBOARD_USERNAME}"
-      - "OPENSEARCH_DASHBOARDS_PASSWORD=${DASHBOARD_PASSWORD}"
-      # Dashboards validates indexer with CA
-      - "INDEXER_CA_CERT=/usr/share/opensearch-dashboards/config/root-ca.pem"
+      - INDEXER_URL=https://wazuh-indexer:9200
+      - INDEXER_USERNAME=admin
+      - INDEXER_PASSWORD=SecretPassword
+      - WAZUH_API_URL=http://wazuh-manager:55000
+      # UI login for the Dashboard itself
+      - OPENSEARCH_DASHBOARDS_USERNAME=admin
+      - OPENSEARCH_DASHBOARDS_PASSWORD=SecretPassword
+      - INDEXER_CA_CERT=/usr/share/opensearch-dashboards/config/root-ca.pem
+    volumes:
+      - wazuh_certs:/usr/share/opensearch-dashboards/config:ro
     ports:
       - "5601:5601"
-    volumes:
-      # Provide CA to Dashboards so it trusts Indexer
-      - wazuh_certs:/usr/share/opensearch-dashboards/config:ro
 
 volumes:
   indexer-data:
   manager-data:
-  # This volume must already contain:
-  #   root-ca.pem, indexer.pem, indexer-key.pem
-  # If you generated certs in another stack, declare this as external.
   wazuh_certs:
-    external: true
+  wazuh_config:
