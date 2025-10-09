@@ -1,0 +1,14 @@
+version: "3.9"
+services:
+  gen-certs:
+    image: wazuh/wazuh-certs-generator:0.0.2
+    hostname: wazuh-certs-generator
+    restart: "no"          # run once, then stop
+    volumes:
+      - wazuh_certs:/certificates
+      - ./config/certs.yml:/config/certs.yml:ro
+    # environment:
+    #   - HTTP_PROXY=http://<YOUR_PROXY>  # if needed
+
+volumes:
+  wazuh_certs:

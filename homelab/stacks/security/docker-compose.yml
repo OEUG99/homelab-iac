@@ -1,44 +1,85 @@
+version: "3.9"
+
 services:
   wazuh-indexer:
-    image: wazuh/wazuh-indexer:4.8.0
+    image: wazuh/wazuh-indexer:4.13.1
     environment:
       - "cluster.name=wazuh"
       - "discovery.type=single-node"
       - "bootstrap.memory_lock=true"
       - "OPENSEARCH_JAVA_OPTS=-Xms2g -Xmx2g"
+      # --- Security plugin TLS (HTTP + transport) ---
+      - "plugins.security.ssl.http.enabled=true"
+      - "plugins.security.ssl.http.pemcert_filepath=/usr/share/opensearch/config/certs/indexer.pem"
+      - "plugins.security.ssl.http.pemkey_filepath=/usr/share/opensearch/config/certs/indexer-key.pem"
+      - "plugins.security.ssl.http.pemtrustedcas_filepath=/usr/share/opensearch/config/certs/root-ca.pem"
+      - "plugins.security.ssl.transport.pemcert_filepath=/usr/share/opensearch/config/certs/indexer.pem"
+      - "plugins.security.ssl.transport.pemkey_filepath=/usr/share/opensearch/config/certs/indexer-key.pem"
+      - "plugins.security.ssl.transport.pemtrustedcas_filepath=/usr/share/opensearch/config/certs/root-ca.pem"
+      # allow the security index to init on first boot (single-node)
+      - "plugins.security.allow_default_init_securityindex=true"
+      # initial admin password (you can also set via file/secret)
+      - "OPENSEARCH_INITIAL_ADMIN_PASSWORD=${INDEXER_PASSWORD}"
     ulimits:
       memlock: { soft: -1, hard: -1 }
     volumes:
       - indexer-data:/usr/share/opensearch/data
+      # mount the generated certs from the shared volume
+      - wazuh_certs:/usr/share/opensearch/config/certs:ro
     ports:
       - "9200:9200"
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9200"]
+      # curl -k for self-signed; auth required when security is on
+      test: ["CMD", "curl", "-ksf", "-u", "admin:${INDEXER_PASSWORD}", "https://localhost:9200"]
       interval: 30s
       timeout: 10s
       retries: 10
 
   wazuh-manager:
-    image: wazuh/wazuh-manager:4.8.0
+    image: wazuh/wazuh-manager:4.13.1
     depends_on: [wazuh-indexer]
     environment:
-      - "INDEXER_URL=http://wazuh-indexer:9200"
+      # Manager -> Indexer over HTTPS with auth
+      - "INDEXER_URL=${INDEXER_URL}"                 # e.g. https://wazuh-indexer:9200
+      - "INDEXER_USERNAME=${INDEXER_USERNAME}"       # e.g. admin
+      - "INDEXER_PASSWORD=${INDEXER_PASSWORD}"       # matches OPENSEARCH_INITIAL_ADMIN_PASSWORD
+      # Manager validates indexer with CA
+      - "INDEXER_CA_CERT=/etc/ssl/indexer/root-ca.pem"
     ports:
       - "1514:1514/udp"   # syslog/agents
       - "1515:1515"       # agent enrollment
       - "55000:55000"     # API
     volumes:
       - manager-data:/var/ossec/data
+      # Provide the CA so manager can validate indexer
+      - wazuh_certs:/etc/ssl/indexer:ro
 
   wazuh-dashboard:
-    image: wazuh/wazuh-dashboard:4.8.0
+    image: wazuh/wazuh-dashboard:4.13.1
     depends_on: [wazuh-indexer, wazuh-manager]
     environment:
-      - "INDEXER_URL=http://wazuh-indexer:9200"
+      # Dashboards -> Indexer over HTTPS
+      - "INDEXER_URL=${INDEXER_URL}"                 # e.g. https://wazuh-indexer:9200
+      - "INDEXER_USERNAME=${INDEXER_USERNAME}"
+      - "INDEXER_PASSWORD=${INDEXER_PASSWORD}"
+      # Dashboard -> Manager (API) over HTTP by default; add TLS later if desired
       - "WAZUH_API_URL=http://wazuh-manager:55000"
+      # Optional: set UI admin user/password (first-run bootstrap)
+      - "OPENSEARCH_DASHBOARDS_USERNAME=${DASHBOARD_USERNAME}"
+      - "OPENSEARCH_DASHBOARDS_PASSWORD=${DASHBOARD_PASSWORD}"
+      # Dashboards validates indexer with CA
+      - "INDEXER_CA_CERT=/usr/share/opensearch-dashboards/config/root-ca.pem"
     ports:
-      - "5601:5601"       # web UI
+      - "5601:5601"
+    volumes:
+      # Provide CA to Dashboards so it trusts Indexer
+      - wazuh_certs:/usr/share/opensearch-dashboards/config:ro
 
 volumes:
   indexer-data:
   manager-data:
+  # This volume must already contain:
+  #   root-ca.pem, indexer.pem, indexer-key.pem
+  # If you generated certs in another stack, declare this as external.
+  wazuh_certs:
+    external: true
