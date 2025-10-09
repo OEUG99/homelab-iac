@@ -1,14 +1,66 @@
 services:
+  # Certificate generator - runs once to create certs if they don't exist
+  cert-generator:
+    image: alpine:latest
+    container_name: wazuh-cert-generator
+    volumes:
+      - wazuh-certs:/certs
+    command: >
+      sh -c "
+      apk add --no-cache openssl &&
+      if [ ! -f /certs/root-ca.pem ]; then
+        echo 'Generating certificates...';
+
+        # Generate Root CA
+        openssl req -x509 -new -nodes -newkey rsa:2048 -keyout /certs/root-ca-key.pem -out /certs/root-ca.pem -days 3650 -subj '/C=US/ST=CA/L=SF/O=Wazuh/CN=root-ca';
+
+        # Generate Admin cert
+        openssl req -new -nodes -newkey rsa:2048 -keyout /certs/admin-key.pem -out /certs/admin.csr -subj '/C=US/ST=CA/L=SF/O=Wazuh/CN=admin';
+        openssl x509 -req -in /certs/admin.csr -CA /certs/root-ca.pem -CAkey /certs/root-ca-key.pem -CAcreateserial -out /certs/admin.pem -days 3650;
+
+        # Generate Indexer cert with SAN
+        openssl req -new -nodes -newkey rsa:2048 -keyout /certs/indexer-key.pem -out /certs/indexer.csr -subj '/C=US/ST=CA/L=SF/O=Wazuh/CN=wazuh-indexer';
+        echo 'subjectAltName=DNS:wazuh-indexer,DNS:localhost,IP:127.0.0.1' > /certs/indexer-san.ext;
+        openssl x509 -req -in /certs/indexer.csr -CA /certs/root-ca.pem -CAkey /certs/root-ca-key.pem -CAcreateserial -out /certs/indexer.pem -days 3650 -extfile /certs/indexer-san.ext;
+
+        # Generate Dashboard cert
+        openssl req -new -nodes -newkey rsa:2048 -keyout /certs/dashboard-key.pem -out /certs/dashboard.csr -subj '/C=US/ST=CA/L=SF/O=Wazuh/CN=wazuh-dashboard';
+        openssl x509 -req -in /certs/dashboard.csr -CA /certs/root-ca.pem -CAkey /certs/root-ca-key.pem -CAcreateserial -out /certs/dashboard.pem -days 3650;
+
+        # Generate Filebeat cert
+        openssl req -new -nodes -newkey rsa:2048 -keyout /certs/filebeat-key.pem -out /certs/filebeat.csr -subj '/C=US/ST=CA/L=SF/O=Wazuh/CN=filebeat';
+        openssl x509 -req -in /certs/filebeat.csr -CA /certs/root-ca.pem -CAkey /certs/root-ca-key.pem -CAcreateserial -out /certs/filebeat.pem -days 3650;
+
+        # Convert keys to PKCS8 format
+        openssl pkcs8 -topk8 -inform PEM -outform PEM -in /certs/admin-key.pem -out /certs/admin-key-pkcs8.pem -nocrypt && mv /certs/admin-key-pkcs8.pem /certs/admin-key.pem;
+        openssl pkcs8 -topk8 -inform PEM -outform PEM -in /certs/indexer-key.pem -out /certs/indexer-key-pkcs8.pem -nocrypt && mv /certs/indexer-key-pkcs8.pem /certs/indexer-key.pem;
+        openssl pkcs8 -topk8 -inform PEM -outform PEM -in /certs/dashboard-key.pem -out /certs/dashboard-key-pkcs8.pem -nocrypt && mv /certs/dashboard-key-pkcs8.pem /certs/dashboard-key.pem;
+        openssl pkcs8 -topk8 -inform PEM -outform PEM -in /certs/filebeat-key.pem -out /certs/filebeat-key-pkcs8.pem -nocrypt && mv /certs/filebeat-key-pkcs8.pem /certs/filebeat-key.pem;
+
+        # Set permissions
+        chmod 644 /certs/*.pem;
+
+        # Cleanup
+        rm -f /certs/*.csr /certs/*.srl /certs/*.ext;
+
+        echo 'Certificates generated successfully!';
+      else
+        echo 'Certificates already exist, skipping generation.';
+      fi
+      "
+
   wazuh-indexer:
     image: wazuh/wazuh-indexer:4.13.1
     platform: linux/amd64
     hostname: wazuh-indexer
     restart: always
+    depends_on:
+      cert-generator:
+        condition: service_completed_successfully
     ports:
       - "9200:9200"
     environment:
       - "OPENSEARCH_JAVA_OPTS=-Xms2g -Xmx2g"
-      - "OPENSEARCH_INITIAL_ADMIN_PASSWORD=${INDEXER_PASSWORD}"
     ulimits:
       memlock:
         soft: -1
@@ -18,16 +70,69 @@ services:
         hard: 65536
     volumes:
       - wazuh-indexer-data:/var/lib/wazuh-indexer
-      - ./certs:/usr/share/wazuh-indexer/certs:ro
+      - wazuh-certs:/usr/share/wazuh-indexer/certs:ro
     configs:
       - source: indexer_config
         target: /usr/share/wazuh-indexer/opensearch.yml
     healthcheck:
-      test: ["CMD-SHELL", "curl -XGET https://localhost:9200 -u admin:${INDEXER_PASSWORD} -k >/dev/null 2>&1 || exit 1"]
+      test: ["CMD-SHELL", "curl -XGET https://localhost:9200 -u admin:admin -k >/dev/null 2>&1 || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 5
       start_period: 60s
+
+  password-setter:
+    image: wazuh/wazuh-indexer:4.13.1
+    platform: linux/amd64
+    container_name: wazuh-password-setter
+    depends_on:
+      wazuh-indexer:
+        condition: service_healthy
+    environment:
+      - INDEXER_PASSWORD=${INDEXER_PASSWORD:-admin}
+    volumes:
+      - wazuh-certs:/usr/share/wazuh-indexer/certs:ro
+    network_mode: "service:wazuh-indexer"
+    command:
+      - bash
+      - -c
+      - |
+        echo "Waiting for indexer to be fully ready..."
+        sleep 20
+
+        echo "Setting admin password using wazuh-passwords-tool..."
+
+        # Test if password is already set
+        if curl -sf -k -u "admin:$$INDEXER_PASSWORD" https://localhost:9200 >/dev/null 2>&1; then
+          echo "Password already set correctly!"
+          exit 0
+        fi
+
+        # Generate hash for the password
+        HASH=$$(bash /usr/share/wazuh-indexer/plugins/opensearch-security/tools/hash.sh -p "$$INDEXER_PASSWORD" | tail -1)
+        echo "Generated password hash: $$HASH"
+
+        # Copy existing security config and update admin password
+        mkdir -p /tmp/secconfig
+        cp -r /usr/share/wazuh-indexer/opensearch-security/* /tmp/secconfig/
+
+        # Update internal_users.yml with new password hash for admin user
+        sed -i "/^admin:/,/^  hash:/ s|hash: \".*\"|hash: \"$$HASH\"|" /tmp/secconfig/internal_users.yml
+
+        echo "Verifying password hash was updated:"
+        grep -A 2 "^admin:" /tmp/secconfig/internal_users.yml
+
+        # Apply configuration using securityadmin
+        bash /usr/share/wazuh-indexer/plugins/opensearch-security/tools/securityadmin.sh \
+          -cd /tmp/secconfig \
+          -icl \
+          -nhnv \
+          -cacert /usr/share/wazuh-indexer/certs/root-ca.pem \
+          -cert /usr/share/wazuh-indexer/certs/admin.pem \
+          -key /usr/share/wazuh-indexer/certs/admin-key.pem \
+          -h localhost
+
+        echo "Password updated successfully!"
 
   wazuh-manager:
     image: wazuh/wazuh-manager:4.13.1
@@ -37,6 +142,8 @@ services:
     depends_on:
       wazuh-indexer:
         condition: service_healthy
+      password-setter:
+        condition: service_completed_successfully
     ports:
       - "1514:1514/udp"  # Agent events
       - "1515:1515"      # Agent enrollment
@@ -45,16 +152,16 @@ services:
     environment:
       - INDEXER_URL=https://wazuh-indexer:9200
       - INDEXER_USERNAME=admin
-      - INDEXER_PASSWORD=${INDEXER_PASSWORD}
+      - INDEXER_PASSWORD=${INDEXER_PASSWORD:-admin}
       - FILEBEAT_SSL_VERIFICATION_MODE=none
       - SSL_CERTIFICATE_AUTHORITIES=/etc/ssl/certs/root-ca.pem
       - API_USERNAME=wazuh-wui
-      - API_PASSWORD=${API_PASSWORD}
+      - API_PASSWORD=${API_PASSWORD:-MyS3cr3tP@ssw0rd!}
     volumes:
       - wazuh-manager-config:/var/ossec/etc
       - wazuh-manager-logs:/var/ossec/logs
       - wazuh-manager-data:/var/ossec/data
-      - ./certs:/etc/ssl/certs:ro
+      - wazuh-certs:/etc/ssl/certs:ro
     healthcheck:
       test: ["CMD-SHELL", "/var/ossec/bin/wazuh-control status | grep -q 'wazuh-modulesd is running' || exit 1"]
       interval: 30s
@@ -72,17 +179,19 @@ services:
         condition: service_healthy
       wazuh-manager:
         condition: service_healthy
+      password-setter:
+        condition: service_completed_successfully
     ports:
       - "5601:5601"
     environment:
       - OPENSEARCH_HOSTS=https://wazuh-indexer:9200
       - DASHBOARD_USERNAME=admin
-      - DASHBOARD_PASSWORD=${INDEXER_PASSWORD}
+      - DASHBOARD_PASSWORD=${INDEXER_PASSWORD:-admin}
       - WAZUH_API_URL=https://wazuh-manager
       - API_USERNAME=wazuh-wui
-      - API_PASSWORD=${API_PASSWORD}
+      - API_PASSWORD=${API_PASSWORD:-MyS3cr3tP@ssw0rd!}
     volumes:
-      - ./certs:/usr/share/wazuh-dashboard/certs:ro
+      - wazuh-certs:/usr/share/wazuh-dashboard/certs:ro
     configs:
       - source: dashboard_config
         target: /usr/share/wazuh-dashboard/config/opensearch_dashboards.yml
@@ -94,6 +203,8 @@ services:
       start_period: 120s
 
 volumes:
+  wazuh-certs:
+    driver: local
   wazuh-indexer-data:
     driver: local
   wazuh-manager-config:
