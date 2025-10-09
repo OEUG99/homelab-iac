@@ -1,0 +1,44 @@
+services:
+  wazuh-indexer:
+    image: wazuh/wazuh-indexer:4.8.0
+    environment:
+      - "cluster.name=wazuh"
+      - "discovery.type=single-node"
+      - "bootstrap.memory_lock=true"
+      - "OPENSEARCH_JAVA_OPTS=-Xms2g -Xmx2g"
+    ulimits:
+      memlock: { soft: -1, hard: -1 }
+    volumes:
+      - indexer-data:/usr/share/opensearch/data
+    ports:
+      - "9200:9200"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9200"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+
+  wazuh-manager:
+    image: wazuh/wazuh-manager:4.8.0
+    depends_on: [wazuh-indexer]
+    environment:
+      - "INDEXER_URL=http://wazuh-indexer:9200"
+    ports:
+      - "1514:1514/udp"   # syslog/agents
+      - "1515:1515"       # agent enrollment
+      - "55000:55000"     # API
+    volumes:
+      - manager-data:/var/ossec/data
+
+  wazuh-dashboard:
+    image: wazuh/wazuh-dashboard:4.8.0
+    depends_on: [wazuh-indexer, wazuh-manager]
+    environment:
+      - "INDEXER_URL=http://wazuh-indexer:9200"
+      - "WAZUH_API_URL=http://wazuh-manager:55000"
+    ports:
+      - "5601:5601"       # web UI
+
+volumes:
+  indexer-data:
+  manager-data:
