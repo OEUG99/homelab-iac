@@ -28,6 +28,35 @@ services:
       - WIREGUARD_PUBLIC_KEY=${WIREGUARD_PUBLIC_KEY}
       - DNS=${DNS}
       - TZ=${TZ}
+    networks:
+      - bridge
+      - edge
+    labels:
+      # qbittorrent
+      - traefik.enable=true
+      - traefik.http.routers.qbittorrent.rule=Host(`qbittorrent.silentgarden.org`)
+      - traefik.http.routers.qbittorrent.entrypoints=web
+      - traefik.http.services.qbittorrent.loadbalancer.server.port=8282
+      # sonarr
+      - traefik.http.routers.sonarr.rule=Host(`sonarr.silentgarden.org`)
+      - traefik.http.routers.sonarr.entrypoints=web
+      - traefik.http.services.sonarr.loadbalancer.server.port=8989
+      # radarr
+      - traefik.http.routers.radarr.rule=Host(`radarr.silentgarden.org`)
+      - traefik.http.routers.radarr.entrypoints=web
+      - traefik.http.services.radarr.loadbalancer.server.port=7878
+      # prowlarr
+      - traefik.http.routers.prowlarr.rule=Host(`prowlarr.silentgarden.org`)
+      - traefik.http.routers.prowlarr.entrypoints=web
+      - traefik.http.services.prowlarr.loadbalancer.server.port=9696
+      # sabnzbd
+      - traefik.http.routers.sabnzbd.rule=Host(`sabnzbd.silentgarden.org`)
+      - traefik.http.routers.sabnzbd.entrypoints=web
+      - traefik.http.services.sabnzbd.loadbalancer.server.port=8787
+      # headphones
+      - traefik.http.routers.headphones.rule=Host(`headphones.silentgarden.org`)
+      - traefik.http.routers.headphones.entrypoints=web
+      - traefik.http.services.headphones.loadbalancer.server.port=8181
     restart: unless-stopped
 
   qbittorrent:
@@ -95,6 +124,14 @@ services:
       - "${BASE_PATH}/tdarr/logs:/app/logs"
       - "${BASE_PATH}/transcode:/temp"
       - "${BASE_PATH}/media:/media"
+    networks:
+      - bridge
+      - edge
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.tdarr.rule=Host(`tdarr.silentgarden.org`)
+      - traefik.http.routers.tdarr.entrypoints=web
+      - traefik.http.services.tdarr.loadbalancer.server.port=8265
     restart: unless-stopped
 
   tdarr-node:
@@ -157,6 +194,12 @@ services:
       - "${BASE_PATH}/config/jellyseerr:/app/config"
     networks:
       - bridge
+      - edge
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.jellyseerr.rule=Host(`jellyseerr.silentgarden.org`)
+      - traefik.http.routers.jellyseerr.entrypoints=web
+      - traefik.http.services.jellyseerr.loadbalancer.server.port=5055
     restart: unless-stopped
 
   homarr:
@@ -168,6 +211,14 @@ services:
       - "${BASE_PATH}/homarr:/app/data/configs"
       - "${BASE_PATH}/homarr/icons:/app/public/icons"
       - "${BASE_PATH}/media:/data"
+    networks:
+      - bridge
+      - edge
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.homarr.rule=Host(`homarr.silentgarden.org`)
+      - traefik.http.routers.homarr.entrypoints=web
+      - traefik.http.services.homarr.loadbalancer.server.port=7575
     restart: unless-stopped
 
   jellyfin:
@@ -185,6 +236,12 @@ services:
       - "${BASE_PATH}/media/books:/data/Books"
     networks:
       - bridge
+      - edge
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.jellyfin.rule=Host(`jellyfin.silentgarden.org`)
+      - traefik.http.routers.jellyfin.entrypoints=web
+      - traefik.http.services.jellyfin.loadbalancer.server.port=8096
     restart: unless-stopped
 
   flaresolverr:
@@ -199,3 +256,6 @@ services:
 networks:
   bridge:
     driver: bridge
+  edge:
+    external: true
+    name: core_edge
