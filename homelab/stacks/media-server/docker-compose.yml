@@ -168,7 +168,9 @@ services:
       - "${BASE_PATH}/config/sabnzbd:/config"
       - "${BASE_PATH}/media/downloads:/downloads"
       - "${BASE_PATH}/media/music:/data/music"
-    restart: unless-stopped
+    ports:
+      - "8787:8787" # Map external port 8787 to internal port 8787 for SABnzbd
+  restart: unless-stopped
 
   headphones:
     image: linuxserver/headphones
