@@ -175,14 +175,16 @@ services:
     container_name: tvapp2
     image: ghcr.io/thebinaryninja/tvapp2:latest
     restart: unless-stopped
+    ports:
+      - "4124:4124"
     volumes:
       - /etc/timezone:/etc/timezone:ro
       - /etc/localtime:/etc/localtime:ro
       - /var/run/docker.sock:/var/run/docker.sock
-      - ./config:/config
-      - ./app:/usr/bin/app
+      - "${BASE_PATH}/config/tvapp2:/config"
+      - "${BASE_PATH}/tvapp2/app:/usr/bin/app"
     environment:
-      - TZ=Etc/UTC
+      - TZ=${TZ}
       - WEB_IP=0.0.0.0
       - WEB_PORT=4124
       - DIR_RUN=/usr/bin/app
@@ -190,6 +192,14 @@ services:
       - FILE_M3U=playlist.m3u8
       - FILE_EPG=xmltv.xml
       - LOG_LEVEL=4
+    networks:
+      - bridge
+      - edge
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.tvapp2.rule=Host(`tvapp2.silentgarden.org`)
+      - traefik.http.routers.tvapp2.entrypoints=web
+      - traefik.http.services.tvapp2.loadbalancer.server.port=4124
 
   headphones:
     image: linuxserver/headphones
