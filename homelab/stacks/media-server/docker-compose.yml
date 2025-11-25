@@ -170,7 +170,26 @@ services:
       - "${BASE_PATH}/media/downloads:/downloads"
       - "${BASE_PATH}/media/music:/data/music"
 
+
+  tvapp2:
+    container_name: tvapp2
+    image: ghcr.io/thebinaryninja/tvapp2:latest
     restart: unless-stopped
+    volumes:
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/localtime:/etc/localtime:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./config:/config
+      - ./app:/usr/bin/app
+    environment:
+      - TZ=Etc/UTC
+      - WEB_IP=0.0.0.0
+      - WEB_PORT=4124
+      - DIR_RUN=/usr/bin/app
+      - STREAM_QUALITY=hd
+      - FILE_M3U=playlist.m3u8
+      - FILE_EPG=xmltv.xml
+      - LOG_LEVEL=4
 
   headphones:
     image: linuxserver/headphones
