@@ -170,7 +170,7 @@ services:
       - "${BASE_PATH}/media/music:/data/music"
     ports:
       - "8787:8787" # Map external port 8787 to internal port 8787 for SABnzbd
-  restart: unless-stopped
+    restart: unless-stopped
 
   headphones:
     image: linuxserver/headphones
