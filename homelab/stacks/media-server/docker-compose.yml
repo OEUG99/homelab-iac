@@ -17,6 +17,7 @@ services:
       - "9696:9696"
       - "9191:9191"
       - "8181:8181" # headphones
+      - "8080:8080"
     volumes:
       - "${BASE_PATH}/gluetun:/gluetun"
     environment:
