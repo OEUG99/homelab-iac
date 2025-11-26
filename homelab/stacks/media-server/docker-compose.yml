@@ -293,8 +293,8 @@ services:
       - PGID=${PGID}
       - TZ=${TZ}
     ports:
-      - "9981:9981"   # Web UI – LAN
-      - "9982:9982"   # HTSP – LAN
+      - "19981:9981"
+      - "19982:9982"
     volumes:
       - "${BASE_PATH}/config/tvheadend:/config"
       - "${BASE_PATH}/media/tv-recordings:/recordings"
