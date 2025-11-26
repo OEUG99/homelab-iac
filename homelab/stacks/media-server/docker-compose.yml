@@ -170,7 +170,6 @@ services:
       - "${BASE_PATH}/media/downloads:/downloads"
       - "${BASE_PATH}/media/music:/data/music"
 
-
   tvapp2:
     container_name: tvapp2
     image: ghcr.io/thebinaryninja/tvapp2:latest
@@ -284,6 +283,33 @@ services:
       - LOG_LEVEL=info
       - TZ=${TZ}
     restart: unless-stopped
+
+
+  tvheadend:
+    image: lscr.io/linuxserver/tvheadend:latest
+    container_name: tvheadend
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+    ports:
+      - "9981:9981"   # Web UI – LAN
+      - "9982:9982"   # HTSP – LAN
+    volumes:
+      - "${BASE_PATH}/config/tvheadend:/config"
+      - "${BASE_PATH}/media/tv-recordings:/recordings"
+    networks:
+      - bridge
+      # ❌ remove edge so Traefik can't talk to it
+      # - edge
+    # ❌ kill Traefik exposure
+    # labels:
+    #   - traefik.enable=true
+    #   - traefik.http.routers.tvheadend.rule=Host(`tvheadend.silentgarden.org`)
+    #   - traefik.http.routers.tvheadend.entrypoints=web
+    #   - traefik.http.services.tvheadend.loadbalancer.server.port=9981
+    restart: unless-stopped
+
 
 networks:
   bridge:
