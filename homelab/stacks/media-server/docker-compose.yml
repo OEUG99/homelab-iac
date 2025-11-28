@@ -285,30 +285,13 @@ services:
     restart: unless-stopped
 
 
-  tvheadend:
-    image: lscr.io/linuxserver/tvheadend:latest
-    container_name: tvheadend
-    environment:
-      - PUID=${PUID}
-      - PGID=${PGID}
-      - TZ=${TZ}
-    ports:
-      - "19981:9981"
-      - "19982:9982"
+  qbit-restarter:
+    image: docker:cli
     volumes:
-      - "${BASE_PATH}/config/tvheadend:/config"
-      - "${BASE_PATH}/media/tv-recordings:/recordings"
-    networks:
-      - bridge
-      # ❌ remove edge so Traefik can't talk to it
-      # - edge
-    # ❌ kill Traefik exposure
-    # labels:
-    #   - traefik.enable=true
-    #   - traefik.http.routers.tvheadend.rule=Host(`tvheadend.silentgarden.org`)
-    #   - traefik.http.routers.tvheadend.entrypoints=web
-    #   - traefik.http.services.tvheadend.loadbalancer.server.port=9981
-    restart: unless-stopped
+      - /var/run/docker.sock:/var/run/docker.sock
+    command: >
+      sh -c "echo '0 */3 * * * docker restart qbittorrent' | crontab - && crond -f"
+    restart: always
 
 
 networks:
