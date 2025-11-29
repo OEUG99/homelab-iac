@@ -12,7 +12,7 @@ services:
       - "6881:6881/udp"
       - "8989:8989"     # sonarr
       - "7878:7878"     # radarr
-      - "8787:8080"     # sabnzbd
+      - "6789:6789"     # nzbget
       - "8181:8181"     # headphones
       - "9696:9696"     # prowlarr
       - "9191:9191"
@@ -233,26 +233,27 @@ services:
       - traefik.http.services.jellyseerr.loadbalancer.server.port=5055
     restart: unless-stopped
 
-  sabnzbd:
-    image: lscr.io/linuxserver/sabnzbd:latest
-    container_name: sabnzbd
-    depends_on: [ gluetun ]
+  nzbget:
+    image: lscr.io/linuxserver/nzbget:latest
+    container_name: nzbget
+    depends_on:
+      - gluetun
     network_mode: "service:gluetun"
     environment:
       - PUID=${PUID}
       - PGID=${PGID}
       - TZ=${TZ}
-      - UMASK_SET=022
-      - SABNZBD_PORT=8787
+      - NZBGET_PORT=6789
     volumes:
-      - "${BASE_PATH}/config/sabnzbd:/config"
+      - "${BASE_PATH}/config/nzbget:/config"
       - "${BASE_PATH}/media/downloads:/downloads"
     restart: unless-stopped
     labels:
       - traefik.enable=true
-      - traefik.http.routers.sabnzbd.rule=Host(`sabnzbd.silentgarden.org`)
-      - traefik.http.routers.sabnzbd.entrypoints=web
-      - traefik.http.services.sabnzbd.loadbalancer.server.port=8787
+      - traefik.http.routers.nzbget.rule=Host(`nzbget.silentgarden.org`)
+      - traefik.http.routers.nzbget.entrypoints=web
+      - traefik.http.services.nzbget.loadbalancer.server.port=6789
+
 
   homarr:
     image: ghcr.io/ajnart/homarr:latest
