@@ -233,6 +233,26 @@ services:
       - traefik.http.services.jellyseerr.loadbalancer.server.port=5055
     restart: unless-stopped
 
+  sabnzbd:
+    image: lscr.io/linuxserver/sabnzbd:latest
+    container_name: sabnzbd
+    depends_on: [ gluetun ]
+    network_mode: "service:gluetun"
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+      - UMASK_SET=022
+    volumes:
+      - "${BASE_PATH}/config/sabnzbd:/config"
+      - "${BASE_PATH}/media/downloads:/downloads"
+    restart: unless-stopped
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.sabnzbd.rule=Host(`sabnzbd.silentgarden.org`)
+      - traefik.http.routers.sabnzbd.entrypoints=web
+      - traefik.http.services.sabnzbd.loadbalancer.server.port=8787
+
   homarr:
     image: ghcr.io/ajnart/homarr:latest
     container_name: homarr
