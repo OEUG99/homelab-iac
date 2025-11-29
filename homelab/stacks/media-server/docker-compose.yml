@@ -243,6 +243,7 @@ services:
       - PGID=${PGID}
       - TZ=${TZ}
       - UMASK_SET=022
+      - SABNZBD_PORT=8787
     volumes:
       - "${BASE_PATH}/config/sabnzbd:/config"
       - "${BASE_PATH}/media/downloads:/downloads"
