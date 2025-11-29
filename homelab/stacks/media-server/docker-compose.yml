@@ -287,6 +287,7 @@ services:
     network_mode: "service:gluetun"
     environment:
       - TZ=${TZ}
+      - SLSKD_REMOTE_CONFIGURATION=true
     volumes:
       - "${BASE_PATH}/config/slskd:/app"               # unified config
       - "${BASE_PATH}/media/downloads/slsk/:/downloads"      # shared downloads
