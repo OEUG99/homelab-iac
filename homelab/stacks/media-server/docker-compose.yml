@@ -247,7 +247,7 @@ services:
     volumes:
       - "${BASE_PATH}/config/nzbget:/config"
       - "${BASE_PATH}/media/downloads:/downloads"
-      - "${BASE_PATH}/media/music:/data/Music"
+      - "${BASE_PATH}/media/music:/data/music"
     restart: unless-stopped
     labels:
       - traefik.enable=true
