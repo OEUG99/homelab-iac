@@ -275,6 +275,40 @@ services:
       - traefik.http.services.homarr.loadbalancer.server.port=7575
     restart: unless-stopped
 
+  slskd:
+    image: slskd/slskd:latest
+    container_name: slskd
+    depends_on:
+      - gluetun
+    network_mode: "service:gluetun"
+    environment:
+      - SLSKD_REMOTE_CONFIGURATION=true
+      - TZ=${TZ}
+    volumes:
+      - "${BASE_PATH}/config/slskd:/app"               # unified config
+      - "${BASE_PATH}/media/downloads/slsk/:/downloads"      # shared downloads
+    restart: unless-stopped
+
+  soularr:
+    image: mrusse08/soularr:latest
+    container_name: soularr
+    depends_on:
+      - slskd
+      - lidarr
+    user: "${PUID}:${PGID}"
+    environment:
+      - TZ=${TZ}
+      - SCRIPT_INTERVAL=300
+    volumes:
+      - "${BASE_PATH}/config/soularr:/data"           # unified config
+      - "${BASE_PATH}/media/downloads:/downloads"     # shared download folder
+    restart: unless-stopped
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.soularr.rule=Host(`soularr.silentgarden.org`)
+      - traefik.http.routers.soularr.entrypoints=web
+      - traefik.http.services.soularr.loadbalancer.server.port=8080
+
   jellyfin:
     image: lscr.io/linuxserver/jellyfin
     container_name: jellyfin
