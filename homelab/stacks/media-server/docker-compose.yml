@@ -7,18 +7,15 @@ services:
     cap_add:
       - NET_ADMIN
     ports:
-      - "8282:8282"
+      - "8282:8282"     # qbittorrent
       - "6881:6881"
       - "6881:6881/udp"
-      - "8989:8989" # sonarr
-      - "7878:7878" # radarr
-      # - "8686:8686" # lidarr (commented)
-      - "8787:8787"
-      - "9696:9696"
+      - "8989:8989"     # sonarr
+      - "7878:7878"     # radarr
+      - "8787:8787"     # sabnzbd
+      - "8181:8181"     # headphones
+      - "9696:9696"     # prowlarr
       - "9191:9191"
-      - "8181:8181" # headphones
-      - "8787:8787" # SABnzbd
-
     volumes:
       - "${BASE_PATH}/gluetun:/gluetun"
     environment:
@@ -34,23 +31,11 @@ services:
       - bridge
       - edge
     labels:
-      # qbittorrent
       - traefik.enable=true
+      # qbittorrent
       - traefik.http.routers.qbittorrent.rule=Host(`qbittorrent.silentgarden.org`)
       - traefik.http.routers.qbittorrent.entrypoints=web
       - traefik.http.services.qbittorrent.loadbalancer.server.port=8282
-      # sonarr
-      - traefik.http.routers.sonarr.rule=Host(`sonarr.silentgarden.org`)
-      - traefik.http.routers.sonarr.entrypoints=web
-      - traefik.http.services.sonarr.loadbalancer.server.port=8989
-      # radarr
-      - traefik.http.routers.radarr.rule=Host(`radarr.silentgarden.org`)
-      - traefik.http.routers.radarr.entrypoints=web
-      - traefik.http.services.radarr.loadbalancer.server.port=7878
-      # prowlarr
-      - traefik.http.routers.prowlarr.rule=Host(`prowlarr.silentgarden.org`)
-      - traefik.http.routers.prowlarr.entrypoints=web
-      - traefik.http.services.prowlarr.loadbalancer.server.port=9696
       # sabnzbd
       - traefik.http.routers.sabnzbd.rule=Host(`sabnzbd.silentgarden.org`)
       - traefik.http.routers.sabnzbd.entrypoints=web
@@ -59,6 +44,18 @@ services:
       - traefik.http.routers.headphones.rule=Host(`headphones.silentgarden.org`)
       - traefik.http.routers.headphones.entrypoints=web
       - traefik.http.services.headphones.loadbalancer.server.port=8181
+      # prowlarr
+      - traefik.http.routers.prowlarr.rule=Host(`prowlarr.silentgarden.org`)
+      - traefik.http.routers.prowlarr.entrypoints=web
+      - traefik.http.services.prowlarr.loadbalancer.server.port=9696
+      # sonarr
+      - traefik.http.routers.sonarr.rule=Host(`sonarr.silentgarden.org`)
+      - traefik.http.routers.sonarr.entrypoints=web
+      - traefik.http.services.sonarr.loadbalancer.server.port=8989
+      # radarr
+      - traefik.http.routers.radarr.rule=Host(`radarr.silentgarden.org`)
+      - traefik.http.routers.radarr.entrypoints=web
+      - traefik.http.services.radarr.loadbalancer.server.port=7878
     restart: unless-stopped
 
   qbittorrent:
@@ -72,6 +69,37 @@ services:
       - WEBUI_PORT=8282
     volumes:
       - "${BASE_PATH}/qbittorrent:/config"
+      - "${BASE_PATH}/media/downloads:/downloads"
+    restart: unless-stopped
+
+  sabnzbd:
+    image: lscr.io/linuxserver/sabnzbd
+    container_name: sabnzbd
+    depends_on: [gluetun]
+    network_mode: "service:gluetun"
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+    volumes:
+      - "${BASE_PATH}/config/sabnzbd:/config"
+      - "${BASE_PATH}/media/downloads:/downloads"
+      - "${BASE_PATH}/media/music:/data/music"
+    restart: unless-stopped
+
+  headphones:
+    image: linuxserver/headphones
+    platform: linux/amd64
+    container_name: headphones
+    depends_on: [gluetun]
+    network_mode: "service:gluetun"
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+    volumes:
+      - "${BASE_PATH}/config/headphones:/config"
+      - "${BASE_PATH}/media/music:/music"
       - "${BASE_PATH}/media/downloads:/downloads"
     restart: unless-stopped
 
@@ -141,7 +169,7 @@ services:
     container_name: tdarr-node
     depends_on: [tdarr]
     ports:
-      - "8267:8267"   # Node port (optional to expose)
+      - "8267:8267"
     environment:
       - TZ=${TZ}
       - PUID=${PUID}
@@ -155,20 +183,6 @@ services:
       - "${BASE_PATH}/transcode:/temp"
       - "${BASE_PATH}/media:/media"
     restart: unless-stopped
-
-  sabnzbd:
-    image: lscr.io/linuxserver/sabnzbd
-    container_name: sabnzbd
-    network_mode: "service:gluetun"
-    depends_on: [gluetun]
-    environment:
-      - PUID=${PUID}
-      - PGID=${PGID}
-      - TZ=${TZ}
-    volumes:
-      - "${BASE_PATH}/config/sabnzbd:/config"
-      - "${BASE_PATH}/media/downloads:/downloads"
-      - "${BASE_PATH}/media/music:/data/music"
 
   tvapp2:
     container_name: tvapp2
@@ -199,22 +213,6 @@ services:
       - traefik.http.routers.tvapp2.rule=Host(`tvapp2.silentgarden.org`)
       - traefik.http.routers.tvapp2.entrypoints=web
       - traefik.http.services.tvapp2.loadbalancer.server.port=4124
-
-  headphones:
-    image: linuxserver/headphones
-    platform: linux/amd64
-    container_name: headphones
-    depends_on: [gluetun]
-    network_mode: "service:gluetun"
-    environment:
-      - PUID=${PUID}
-      - PGID=${PGID}
-      - TZ=${TZ}
-    volumes:
-      - "${BASE_PATH}/config/headphones:/config"
-      - "${BASE_PATH}/media/music:/music"
-      - "${BASE_PATH}/media/downloads:/downloads"
-    restart: unless-stopped
 
   jellyseerr:
     image: fallenbagel/jellyseerr:latest
@@ -258,7 +256,6 @@ services:
     ports:
       - "8096:8096/tcp"
       - "7359:7359/udp"
-      # - "1900:1900/udp"   # removed to avoid macOS port conflict
     volumes:
       - "${BASE_PATH}/config/jellyfin:/config"
       - "${BASE_PATH}/media/movies:/data/Movies"
@@ -284,7 +281,6 @@ services:
       - TZ=${TZ}
     restart: unless-stopped
 
-
   qbit-restarter:
     image: docker:cli
     volumes:
@@ -292,7 +288,6 @@ services:
     command: >
       sh -c "echo '0 */3 * * * docker restart qbittorrent' | crontab - && crond -f"
     restart: always
-
 
 networks:
   bridge:
