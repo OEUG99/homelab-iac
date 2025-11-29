@@ -286,7 +286,6 @@ services:
       - gluetun
     network_mode: "service:gluetun"
     environment:
-      - SLSKD_REMOTE_CONFIGURATION=true
       - TZ=${TZ}
     volumes:
       - "${BASE_PATH}/config/slskd:/app"               # unified config
