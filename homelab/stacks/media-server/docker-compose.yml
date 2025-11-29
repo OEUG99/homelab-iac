@@ -16,6 +16,7 @@ services:
       - "8181:8181"     # headphones
       - "9696:9696"     # prowlarr
       - "9191:9191"
+      - "8686:8686"     # lidarr
     volumes:
       - "${BASE_PATH}/gluetun:/gluetun"
     environment:
