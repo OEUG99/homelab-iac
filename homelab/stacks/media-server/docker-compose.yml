@@ -288,6 +288,7 @@ services:
       - "${BASE_PATH}/config/slskd:/app"               # unified config
       - "${BASE_PATH}/media/downloads/slsk/:/downloads"      # shared downloads
     restart: unless-stopped
+    platform: linux/amd64
 
   soularr:
     image: mrusse08/soularr:latest
