@@ -297,21 +297,23 @@ services:
     image: mrusse08/soularr:latest
     container_name: soularr
     depends_on:
-      - slskd
+      - gluetun
       - lidarr
+    network_mode: "service:gluetun"  # Add this line
     user: "${PUID}:${PGID}"
     environment:
       - TZ=${TZ}
       - SCRIPT_INTERVAL=300
     volumes:
-      - "${BASE_PATH}/config/soularr:/data"           # unified config
-      - "${BASE_PATH}/media/downloads:/downloads"     # shared download folder
+      - "${BASE_PATH}/config/soularr:/data"
+      - "${BASE_PATH}/media/downloads:/downloads"
     restart: unless-stopped
-    labels:
-      - traefik.enable=true
-      - traefik.http.routers.soularr.rule=Host(`soularr.silentgarden.org`)
-      - traefik.http.routers.soularr.entrypoints=web
-      - traefik.http.services.soularr.loadbalancer.server.port=8080
+    # Remove these labels since Soularr will now share Gluetun's network
+    # labels:
+    #   - traefik.enable=true
+    #   - traefik.http.routers.soularr.rule=Host(`soularr.silentgarden.org`)
+    #   - traefik.http.routers.soularr.entrypoints=web
+    #   - traefik.http.services.soularr.loadbalancer.server.port=8080
     platform: linux/amd64
 
   jellyfin:
