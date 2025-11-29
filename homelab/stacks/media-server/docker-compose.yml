@@ -288,7 +288,6 @@ services:
       - "${BASE_PATH}/config/slskd:/app"               # unified config
       - "${BASE_PATH}/media/downloads/slsk/:/downloads"      # shared downloads
     restart: unless-stopped
-    platform: linux/amd64
 
   soularr:
     image: mrusse08/soularr:latest
@@ -309,6 +308,7 @@ services:
       - traefik.http.routers.soularr.rule=Host(`soularr.silentgarden.org`)
       - traefik.http.routers.soularr.entrypoints=web
       - traefik.http.services.soularr.loadbalancer.server.port=8080
+    platform: linux/amd64
 
   jellyfin:
     image: lscr.io/linuxserver/jellyfin
