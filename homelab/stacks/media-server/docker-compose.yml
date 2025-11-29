@@ -32,27 +32,27 @@ services:
       - edge
     labels:
       - traefik.enable=true
-      # qbittorrent
+      # qBittorrent
       - traefik.http.routers.qbittorrent.rule=Host(`qbittorrent.silentgarden.org`)
       - traefik.http.routers.qbittorrent.entrypoints=web
       - traefik.http.services.qbittorrent.loadbalancer.server.port=8282
-      # sabnzbd
+      # Sabnzbd
       - traefik.http.routers.sabnzbd.rule=Host(`sabnzbd.silentgarden.org`)
       - traefik.http.routers.sabnzbd.entrypoints=web
       - traefik.http.services.sabnzbd.loadbalancer.server.port=8787
-      # headphones
+      # Headphones
       - traefik.http.routers.headphones.rule=Host(`headphones.silentgarden.org`)
       - traefik.http.routers.headphones.entrypoints=web
       - traefik.http.services.headphones.loadbalancer.server.port=8181
-      # prowlarr
+      # Prowlarr
       - traefik.http.routers.prowlarr.rule=Host(`prowlarr.silentgarden.org`)
       - traefik.http.routers.prowlarr.entrypoints=web
       - traefik.http.services.prowlarr.loadbalancer.server.port=9696
-      # sonarr
+      # Sonarr
       - traefik.http.routers.sonarr.rule=Host(`sonarr.silentgarden.org`)
       - traefik.http.routers.sonarr.entrypoints=web
       - traefik.http.services.sonarr.loadbalancer.server.port=8989
-      # radarr
+      # Radarr
       - traefik.http.routers.radarr.rule=Host(`radarr.silentgarden.org`)
       - traefik.http.routers.radarr.entrypoints=web
       - traefik.http.services.radarr.loadbalancer.server.port=7878
@@ -135,12 +135,22 @@ services:
       - "${BASE_PATH}/media/downloads:/downloads"
     restart: unless-stopped
 
+  flaresolverr:
+    image: ghcr.io/flaresolverr/flaresolverr:latest
+    container_name: flaresolverr
+    depends_on: [gluetun]
+    network_mode: "service:gluetun"
+    environment:
+      - LOG_LEVEL=info
+      - TZ=${TZ}
+    restart: unless-stopped
+
   tdarr:
     image: ghcr.io/haveagitgat/tdarr:latest
     container_name: tdarr
     ports:
-      - "8265:8265"   # Web UI
-      - "8266:8266"   # Server port
+      - "8265:8265"
+      - "8266:8266"
     environment:
       - TZ=${TZ}
       - PUID=${PUID}
@@ -187,7 +197,6 @@ services:
   tvapp2:
     container_name: tvapp2
     image: ghcr.io/thebinaryninja/tvapp2:latest
-    restart: unless-stopped
     ports:
       - "4124:4124"
     volumes:
@@ -213,6 +222,7 @@ services:
       - traefik.http.routers.tvapp2.rule=Host(`tvapp2.silentgarden.org`)
       - traefik.http.routers.tvapp2.entrypoints=web
       - traefik.http.services.tvapp2.loadbalancer.server.port=4124
+    restart: unless-stopped
 
   jellyseerr:
     image: fallenbagel/jellyseerr:latest
@@ -272,17 +282,9 @@ services:
       - traefik.http.services.jellyfin.loadbalancer.server.port=8096
     restart: unless-stopped
 
-  flaresolverr:
-    image: ghcr.io/flaresolverr/flaresolverr:latest
-    container_name: flaresolverr
-    network_mode: "service:gluetun"
-    environment:
-      - LOG_LEVEL=info
-      - TZ=${TZ}
-    restart: unless-stopped
-
   qbit-restarter:
     image: docker:cli
+    container_name: qbit-restarter
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     command: >
