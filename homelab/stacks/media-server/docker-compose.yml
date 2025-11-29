@@ -72,37 +72,6 @@ services:
       - "${BASE_PATH}/media/downloads:/downloads"
     restart: unless-stopped
 
-  sabnzbd:
-    image: lscr.io/linuxserver/sabnzbd
-    container_name: sabnzbd
-    depends_on: [gluetun]
-    network_mode: "service:gluetun"
-    environment:
-      - PUID=${PUID}
-      - PGID=${PGID}
-      - TZ=${TZ}
-    volumes:
-      - "${BASE_PATH}/config/sabnzbd:/config"
-      - "${BASE_PATH}/media/downloads:/downloads"
-      - "${BASE_PATH}/media/music:/data/music"
-    restart: unless-stopped
-
-  headphones:
-    image: linuxserver/headphones
-    platform: linux/amd64
-    container_name: headphones
-    depends_on: [gluetun]
-    network_mode: "service:gluetun"
-    environment:
-      - PUID=${PUID}
-      - PGID=${PGID}
-      - TZ=${TZ}
-    volumes:
-      - "${BASE_PATH}/config/headphones:/config"
-      - "${BASE_PATH}/media/music:/music"
-      - "${BASE_PATH}/media/downloads:/downloads"
-    restart: unless-stopped
-
   prowlarr:
     image: lscr.io/linuxserver/prowlarr:latest
     container_name: prowlarr
