@@ -253,8 +253,6 @@ services:
       - traefik.http.routers.sabnzbd.rule=Host(`sabnzbd.silentgarden.org`)
       - traefik.http.routers.sabnzbd.entrypoints=web
       - traefik.http.services.sabnzbd.loadbalancer.server.port=8787
-    ports:
-      - "8787:8080"
 
   homarr:
     image: ghcr.io/ajnart/homarr:latest
