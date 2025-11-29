@@ -12,7 +12,7 @@ services:
       - "6881:6881/udp"
       - "8989:8989"     # sonarr
       - "7878:7878"     # radarr
-      - "8787:8787"     # sabnzbd
+      - "8787:8080"     # sabnzbd
       - "8181:8181"     # headphones
       - "9696:9696"     # prowlarr
       - "9191:9191"
