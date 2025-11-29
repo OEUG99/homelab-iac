@@ -17,6 +17,10 @@ services:
       - "9696:9696"     # prowlarr
       - "9191:9191"
       - "8686:8686"     # lidarr
+      - "5030:5030"     # slskd HTTP
+      - "5031:5031"     # slskd HTTPS (optional)
+      - "50300:50300"   # slskd P2P
+      - "5000:5000"   # Soularr Web UI
     volumes:
       - "${BASE_PATH}/gluetun:/gluetun"
     environment:
