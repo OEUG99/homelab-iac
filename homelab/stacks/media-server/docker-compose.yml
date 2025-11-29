@@ -291,6 +291,7 @@ services:
     volumes:
       - "${BASE_PATH}/config/slskd:/app"               # unified config
       - "${BASE_PATH}/media/downloads/slsk/:/downloads"      # shared downloads
+      - "${BASE_PATH}/media/downloads/slsk/incomplete/:/incomplete"      # shared incomplete
     restart: unless-stopped
 
   soularr:
@@ -299,6 +300,7 @@ services:
     depends_on:
       - gluetun
       - lidarr
+      - slskd
     network_mode: "service:gluetun"  # Add this line
     user: "${PUID}:${PGID}"
     environment:
@@ -307,6 +309,7 @@ services:
     volumes:
       - "${BASE_PATH}/config/soularr:/data"
       - "${BASE_PATH}/media/downloads:/downloads"
+      - "${BASE_PATH}/media/downloads/slsk/incomplete/:/incomplete"      # shared incomplete
     restart: unless-stopped
     # Remove these labels since Soularr will now share Gluetun's network
     # labels:
