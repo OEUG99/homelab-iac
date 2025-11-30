@@ -333,6 +333,7 @@ services:
       - "${BASE_PATH}/media/tv-shows:/data/TVShows"
       - "${BASE_PATH}/media/music:/data/Music"
       - "${BASE_PATH}/media/books:/data/Books"
+      - "${BASE_PATH}/media/download/slsk/:/download/slsk"
     networks:
       - bridge
       - edge
