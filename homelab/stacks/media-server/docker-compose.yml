@@ -91,6 +91,8 @@ services:
       - "${BASE_PATH}/config/lidarr:/config"
       - "${BASE_PATH}/media/music:/data/music"
       - "${BASE_PATH}/media/downloads:/downloads"
+      - "${BASE_PATH}/media/download/slsk/:/download/slsk"
+      - "${BASE_PATH}/media/download/slsk/nzb:/download/slsk/nzb"
     restart: unless-stopped
     labels:
       - traefik.enable=true
