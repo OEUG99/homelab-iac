@@ -91,8 +91,8 @@ services:
       - "${BASE_PATH}/config/lidarr:/config"
       - "${BASE_PATH}/media/music:/data/music"
       - "${BASE_PATH}/media/downloads:/downloads"
-      - "${BASE_PATH}/media/download/slsk/:/download/slsk"
-      - "${BASE_PATH}/media/download/slsk/nzb:/download/slsk/nzb"
+      - "${BASE_PATH}/media/downloads/slsk/:/download/slsk"
+      - "${BASE_PATH}/media/downloads/slsk/nzb:/download/slsk/nzb"
     restart: unless-stopped
     labels:
       - traefik.enable=true
@@ -333,7 +333,6 @@ services:
       - "${BASE_PATH}/media/tv-shows:/data/TVShows"
       - "${BASE_PATH}/media/music:/data/Music"
       - "${BASE_PATH}/media/books:/data/Books"
-      - "${BASE_PATH}/media/download/slsk/:/download/slsk"
     networks:
       - bridge
       - edge
