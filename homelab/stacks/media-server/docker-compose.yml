@@ -1,31 +1,26 @@
 version: "3.9"
 
 services:
-  # Traefik Reverse Proxy
-  traefik:
-    image: traefik:v3.0
-    container_name: traefik
-    restart: unless-stopped
-    command:
-      - "--api.insecure=true"               # optional dashboard
-      - "--providers.docker=true"
-      - "--entrypoints.web.address=:80"
-      - "--entrypoints.websecure.address=:443"
-      - "--certificatesresolvers.myresolver.acme.tlschallenge=true"
-      - "--certificatesresolvers.myresolver.acme.email=you@example.com"
-      - "--certificatesresolvers.myresolver.acme.storage=/letsencrypt/acme.json"
-    volumes:
-      - "/var/run/docker.sock:/var/run/docker.sock:ro"
-      - "letsencrypt:/letsencrypt"
-    networks:
-      - web
-
-  # VPN / Network isolation
   gluetun:
     image: qmcgaw/gluetun
     container_name: gluetun
     cap_add:
       - NET_ADMIN
+    ports:
+      - "8282:8282"     # qbittorrent
+      - "6881:6881"
+      - "6881:6881/udp"
+      - "8989:8989"     # sonarr
+      - "7878:7878"     # radarr
+      - "6789:6789"     # nzbget
+      - "8181:8181"     # headphones
+      - "9696:9696"     # prowlarr
+      - "9191:9191"
+      - "8686:8686"     # lidarr
+      - "5030:5030"     # slskd HTTP
+      - "5031:5031"     # slskd HTTPS (optional)
+      - "50300:50300"   # slskd P2P
+      - "5000:5000"   # Soularr Web UI
     volumes:
       - "${BASE_PATH}/gluetun:/gluetun"
     environment:
@@ -38,9 +33,36 @@ services:
       - DNS=${DNS}
       - TZ=${TZ}
     networks:
+      - bridge
       - edge
+    labels:
+      - traefik.enable=true
+      # qBittorrent
+      - traefik.http.routers.qbittorrent.rule=Host(`qbittorrent.silentgarden.org`)
+      - traefik.http.routers.qbittorrent.entrypoints=web
+      - traefik.http.services.qbittorrent.loadbalancer.server.port=8282
+      # Sabnzbd
+      - traefik.http.routers.sabnzbd.rule=Host(`sabnzbd.silentgarden.org`)
+      - traefik.http.routers.sabnzbd.entrypoints=web
+      - traefik.http.services.sabnzbd.loadbalancer.server.port=8787
+      # Headphones
+      - traefik.http.routers.headphones.rule=Host(`headphones.silentgarden.org`)
+      - traefik.http.routers.headphones.entrypoints=web
+      - traefik.http.services.headphones.loadbalancer.server.port=8181
+      # Prowlarr
+      - traefik.http.routers.prowlarr.rule=Host(`prowlarr.silentgarden.org`)
+      - traefik.http.routers.prowlarr.entrypoints=web
+      - traefik.http.services.prowlarr.loadbalancer.server.port=9696
+      # Sonarr
+      - traefik.http.routers.sonarr.rule=Host(`sonarr.silentgarden.org`)
+      - traefik.http.routers.sonarr.entrypoints=web
+      - traefik.http.services.sonarr.loadbalancer.server.port=8989
+      # Radarr
+      - traefik.http.routers.radarr.rule=Host(`radarr.silentgarden.org`)
+      - traefik.http.routers.radarr.entrypoints=web
+      - traefik.http.services.radarr.loadbalancer.server.port=7878
+    restart: unless-stopped
 
-  # qBittorrent
   qbittorrent:
     image: lscr.io/linuxserver/qbittorrent
     container_name: qbittorrent
@@ -54,17 +76,11 @@ services:
       - "${BASE_PATH}/qbittorrent:/config"
       - "${BASE_PATH}/media/downloads:/downloads"
     restart: unless-stopped
-    labels:
-      - traefik.enable=true
-      - traefik.http.routers.qbittorrent.rule=Host(`qbittorrent.silentgarden.org`)
-      - traefik.http.routers.qbittorrent.entrypoints=web
-      - traefik.http.services.qbittorrent.loadbalancer.server.port=8282
 
-  # Lidarr
   lidarr:
     image: lscr.io/linuxserver/lidarr:latest
     container_name: lidarr
-    depends_on: [gluetun]
+    depends_on: [ gluetun ]
     network_mode: "service:gluetun"
     environment:
       - PUID=${PUID}
@@ -84,7 +100,7 @@ services:
       - traefik.http.routers.lidarr.entrypoints=web
       - traefik.http.services.lidarr.loadbalancer.server.port=8686
 
-  # Prowlarr
+
   prowlarr:
     image: lscr.io/linuxserver/prowlarr:latest
     container_name: prowlarr
@@ -94,13 +110,7 @@ services:
       - "${BASE_PATH}/config/prowlarr:/config"
       - "${BASE_PATH}/media/downloads:/downloads"
     restart: unless-stopped
-    labels:
-      - traefik.enable=true
-      - traefik.http.routers.prowlarr.rule=Host(`prowlarr.silentgarden.org`)
-      - traefik.http.routers.prowlarr.entrypoints=web
-      - traefik.http.services.prowlarr.loadbalancer.server.port=9696
 
-  # Sonarr
   sonarr:
     image: lscr.io/linuxserver/sonarr:latest
     container_name: sonarr
@@ -111,13 +121,7 @@ services:
       - "${BASE_PATH}/media/tv-shows:/data/tvshows"
       - "${BASE_PATH}/media/downloads:/downloads"
     restart: unless-stopped
-    labels:
-      - traefik.enable=true
-      - traefik.http.routers.sonarr.rule=Host(`sonarr.silentgarden.org`)
-      - traefik.http.routers.sonarr.entrypoints=web
-      - traefik.http.services.sonarr.loadbalancer.server.port=8989
 
-  # Radarr
   radarr:
     image: lscr.io/linuxserver/radarr:latest
     container_name: radarr
@@ -128,13 +132,7 @@ services:
       - "${BASE_PATH}/media/movies:/data/movies"
       - "${BASE_PATH}/media/downloads:/downloads"
     restart: unless-stopped
-    labels:
-      - traefik.enable=true
-      - traefik.http.routers.radarr.rule=Host(`radarr.silentgarden.org`)
-      - traefik.http.routers.radarr.entrypoints=web
-      - traefik.http.services.radarr.loadbalancer.server.port=7878
 
-  # FlareSolverr
   flaresolverr:
     image: ghcr.io/flaresolverr/flaresolverr:latest
     container_name: flaresolverr
@@ -145,10 +143,12 @@ services:
       - TZ=${TZ}
     restart: unless-stopped
 
-  # TDarr Server
   tdarr:
     image: ghcr.io/haveagitgat/tdarr:latest
     container_name: tdarr
+    ports:
+      - "8265:8265"
+      - "8266:8266"
     environment:
       - TZ=${TZ}
       - PUID=${PUID}
@@ -163,7 +163,7 @@ services:
       - "${BASE_PATH}/transcode:/temp"
       - "${BASE_PATH}/media:/media"
     networks:
-      - web
+      - bridge
       - edge
     labels:
       - traefik.enable=true
@@ -172,11 +172,12 @@ services:
       - traefik.http.services.tdarr.loadbalancer.server.port=8265
     restart: unless-stopped
 
-  # TDarr Node
   tdarr-node:
     image: ghcr.io/haveagitgat/tdarr_node:latest
     container_name: tdarr-node
     depends_on: [tdarr]
+    ports:
+      - "8267:8267"
     environment:
       - TZ=${TZ}
       - PUID=${PUID}
@@ -191,24 +192,17 @@ services:
       - "${BASE_PATH}/media:/media"
     restart: unless-stopped
 
-  # TVApp2
   tvapp2:
     container_name: tvapp2
     image: ghcr.io/thebinaryninja/tvapp2:latest
+    ports:
+      - "4124:4124"
     volumes:
       - /etc/timezone:/etc/timezone:ro
       - /etc/localtime:/etc/localtime:ro
       - /var/run/docker.sock:/var/run/docker.sock
       - "${BASE_PATH}/config/tvapp2:/config"
       - "${BASE_PATH}/tvapp2/app:/usr/bin/app"
-    networks:
-      - web
-      - edge
-    labels:
-      - traefik.enable=true
-      - traefik.http.routers.tvapp2.rule=Host(`tvapp2.silentgarden.org`)
-      - traefik.http.routers.tvapp2.entrypoints=web
-      - traefik.http.services.tvapp2.loadbalancer.server.port=4124
     environment:
       - TZ=${TZ}
       - WEB_IP=0.0.0.0
@@ -218,16 +212,25 @@ services:
       - FILE_M3U=playlist.m3u8
       - FILE_EPG=xmltv.xml
       - LOG_LEVEL=4
+    networks:
+      - bridge
+      - edge
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.tvapp2.rule=Host(`tvapp2.silentgarden.org`)
+      - traefik.http.routers.tvapp2.entrypoints=web
+      - traefik.http.services.tvapp2.loadbalancer.server.port=4124
     restart: unless-stopped
 
-  # Jellyseerr
   jellyseerr:
     image: fallenbagel/jellyseerr:latest
     container_name: jellyseerr
+    ports:
+      - "5055:5055"
     volumes:
       - "${BASE_PATH}/config/jellyseerr:/app/config"
     networks:
-      - web
+      - bridge
       - edge
     labels:
       - traefik.enable=true
@@ -236,11 +239,11 @@ services:
       - traefik.http.services.jellyseerr.loadbalancer.server.port=5055
     restart: unless-stopped
 
-  # NZBGet
   nzbget:
     image: lscr.io/linuxserver/nzbget:latest
     container_name: nzbget
-    depends_on: [gluetun]
+    depends_on:
+      - gluetun
     network_mode: "service:gluetun"
     environment:
       - PUID=${PUID}
@@ -258,27 +261,51 @@ services:
       - traefik.http.routers.nzbget.entrypoints=web
       - traefik.http.services.nzbget.loadbalancer.server.port=6789
 
-  # Soulseek Daemon
+
+  homarr:
+    image: ghcr.io/ajnart/homarr:latest
+    container_name: homarr
+    ports:
+      - "7575:7575"
+    volumes:
+      - "${BASE_PATH}/homarr:/app/data/configs"
+      - "${BASE_PATH}/homarr/icons:/app/public/icons"
+      - "${BASE_PATH}/media:/data"
+    networks:
+      - bridge
+      - edge
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.homarr.rule=Host(`homarr.silentgarden.org`)
+      - traefik.http.routers.homarr.entrypoints=web
+      - traefik.http.services.homarr.loadbalancer.server.port=7575
+    environment:
+      - DISABLE_UPGRADE_MODAL=true
+    restart: unless-stopped
+
   slskd:
     image: slskd/slskd:latest
     container_name: slskd
-    depends_on: [gluetun]
+    depends_on:
+      - gluetun
     network_mode: "service:gluetun"
     environment:
       - TZ=${TZ}
       - SLSKD_REMOTE_CONFIGURATION=true
     volumes:
-      - "${BASE_PATH}/config/slskd:/app"
-      - "${BASE_PATH}/media/downloads/slsk/:/downloads"
-      - "${BASE_PATH}/media/downloads/slsk/incomplete/:/incomplete"
+      - "${BASE_PATH}/config/slskd:/app"               # unified config
+      - "${BASE_PATH}/media/downloads/slsk/:/downloads"      # shared downloads
+      - "${BASE_PATH}/media/downloads/slsk/incomplete/:/incomplete"      # shared incomplete
     restart: unless-stopped
 
-  # Soularr
   soularr:
     image: mrusse08/soularr:latest
     container_name: soularr
-    depends_on: [gluetun, lidarr, slskd]
-    network_mode: "service:gluetun"
+    depends_on:
+      - gluetun
+      - lidarr
+      - slskd
+    network_mode: "service:gluetun"  # Add this line
     user: "${PUID}:${PGID}"
     environment:
       - TZ=${TZ}
@@ -286,14 +313,22 @@ services:
     volumes:
       - "${BASE_PATH}/config/soularr:/data"
       - "${BASE_PATH}/media/downloads:/downloads"
-      - "${BASE_PATH}/media/downloads/slsk/incomplete/:/incomplete"
+      - "${BASE_PATH}/media/downloads/slsk/incomplete/:/incomplete"      # shared incomplete
     restart: unless-stopped
+    # Remove these labels since Soularr will now share Gluetun's network
+    # labels:
+    #   - traefik.enable=true
+    #   - traefik.http.routers.soularr.rule=Host(`soularr.silentgarden.org`)
+    #   - traefik.http.routers.soularr.entrypoints=web
+    #   - traefik.http.services.soularr.loadbalancer.server.port=8080
     platform: linux/amd64
 
-  # Jellyfin
   jellyfin:
     image: lscr.io/linuxserver/jellyfin
     container_name: jellyfin
+    ports:
+      - "8096:8096/tcp"
+      - "7359:7359/udp"
     volumes:
       - "${BASE_PATH}/config/jellyfin:/config"
       - "${BASE_PATH}/media/movies:/data/Movies"
@@ -301,7 +336,7 @@ services:
       - "${BASE_PATH}/media/music:/data/Music"
       - "${BASE_PATH}/media/books:/data/Books"
     networks:
-      - web
+      - bridge
       - edge
     labels:
       - traefik.enable=true
@@ -310,11 +345,17 @@ services:
       - traefik.http.services.jellyfin.loadbalancer.server.port=8096
     restart: unless-stopped
 
-volumes:
-  letsencrypt:
+  qbit-restarter:
+    image: docker:cli
+    container_name: qbit-restarter
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    command: >
+      sh -c "echo '0 */3 * * * docker restart qbittorrent' | crontab - && crond -f"
+    restart: always
 
 networks:
-  web:
+  bridge:
     driver: bridge
   edge:
     external: true
