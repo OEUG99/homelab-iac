@@ -2,6 +2,7 @@ version: "3.9"
 
 networks:
   edge:
+    name: core_edge
     driver: bridge
 
 volumes:
@@ -13,7 +14,8 @@ services:
     container_name: cloudflared
     restart: unless-stopped
     command: tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN}
-    networks: [edge]
+    networks:
+      - edge
     environment:
       - TZ=${TZ}
 
@@ -21,26 +23,38 @@ services:
     image: traefik:v3.1
     container_name: traefik
     restart: unless-stopped
-    networks: [edge]
+    networks:
+      - edge
     command:
       - --providers.docker=true
       - --providers.docker.exposedbydefault=false
+      - --providers.docker.network=core_edge
       - --entrypoints.web.address=:80
+      - --api.dashboard=true
+      - --api.insecure=true
+      - --log.level=INFO
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
     ports:
-      - "80:80"            # http://localhost
+      - "80:80"            # HTTP
+      - "8080:8080"        # Traefik Dashboard
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.traefik.rule=Host(`traefik.silentgarden.org`)
+      - traefik.http.routers.traefik.entrypoints=web
+      - traefik.http.routers.traefik.service=api@internal
 
   portainer:
     image: portainer/portainer-ce:latest
     container_name: portainer
     restart: unless-stopped
-    networks: [edge]
+    networks:
+      - edge
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - portainer_data:/data
     ports:
-      - "9000:9000"        # http://localhost:9000
+      - "9000:9000"        # Direct access
     labels:
       - traefik.enable=true
       - traefik.http.routers.portainer.rule=Host(`portainer.silentgarden.org`)
