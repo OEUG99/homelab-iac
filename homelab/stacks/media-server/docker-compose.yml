@@ -54,47 +54,54 @@ services:
       - bridge
       - edge
     labels:
-      # Traefik routing for VPN-protected services
       - traefik.enable=true
-      
+
       # qBittorrent
       - traefik.http.routers.qbittorrent.rule=Host(`qbittorrent.silentgarden.org`)
       - traefik.http.routers.qbittorrent.entrypoints=web
+      - traefik.http.routers.qbittorrent.service=qbittorrent
       - traefik.http.services.qbittorrent.loadbalancer.server.port=8282
-      
+
       # Prowlarr
       - traefik.http.routers.prowlarr.rule=Host(`prowlarr.silentgarden.org`)
       - traefik.http.routers.prowlarr.entrypoints=web
+      - traefik.http.routers.prowlarr.service=prowlarr
       - traefik.http.services.prowlarr.loadbalancer.server.port=9696
-      
+
       # Sonarr
       - traefik.http.routers.sonarr.rule=Host(`sonarr.silentgarden.org`)
       - traefik.http.routers.sonarr.entrypoints=web
+      - traefik.http.routers.sonarr.service=sonarr
       - traefik.http.services.sonarr.loadbalancer.server.port=8989
-      
+
       # Radarr
       - traefik.http.routers.radarr.rule=Host(`radarr.silentgarden.org`)
       - traefik.http.routers.radarr.entrypoints=web
+      - traefik.http.routers.radarr.service=radarr
       - traefik.http.services.radarr.loadbalancer.server.port=7878
-      
+
       # Lidarr
       - traefik.http.routers.lidarr.rule=Host(`lidarr.silentgarden.org`)
       - traefik.http.routers.lidarr.entrypoints=web
+      - traefik.http.routers.lidarr.service=lidarr
       - traefik.http.services.lidarr.loadbalancer.server.port=8686
-      
+
       # NZBGet
       - traefik.http.routers.nzbget.rule=Host(`nzbget.silentgarden.org`)
       - traefik.http.routers.nzbget.entrypoints=web
+      - traefik.http.routers.nzbget.service=nzbget
       - traefik.http.services.nzbget.loadbalancer.server.port=6789
-      
+
       # Slskd
       - traefik.http.routers.slskd.rule=Host(`slskd.silentgarden.org`)
       - traefik.http.routers.slskd.entrypoints=web
+      - traefik.http.routers.slskd.service=slskd
       - traefik.http.services.slskd.loadbalancer.server.port=5030
-      
+
       # Soularr
       - traefik.http.routers.soularr.rule=Host(`soularr.silentgarden.org`)
       - traefik.http.routers.soularr.entrypoints=web
+      - traefik.http.routers.soularr.service=soularr
       - traefik.http.services.soularr.loadbalancer.server.port=5000
     restart: unless-stopped
 
