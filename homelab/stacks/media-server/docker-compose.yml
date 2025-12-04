@@ -163,7 +163,6 @@ services:
 
 networks:
   web:
-    external: true
   edge:
     external: true
     name: core_edge
