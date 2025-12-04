@@ -56,44 +56,44 @@ services:
     labels:
       # Traefik routing for VPN-protected services
       - traefik.enable=true
-
+      
       # qBittorrent
-      - traefik.http.routers.qbittorrent.rule=Host(\`qbittorrent.silentgarden.org\`)
+      - traefik.http.routers.qbittorrent.rule=Host(`qbittorrent.silentgarden.org`)
       - traefik.http.routers.qbittorrent.entrypoints=web
       - traefik.http.services.qbittorrent.loadbalancer.server.port=8282
-
+      
       # Prowlarr
-      - traefik.http.routers.prowlarr.rule=Host(\`prowlarr.silentgarden.org\`)
+      - traefik.http.routers.prowlarr.rule=Host(`prowlarr.silentgarden.org`)
       - traefik.http.routers.prowlarr.entrypoints=web
       - traefik.http.services.prowlarr.loadbalancer.server.port=9696
-
+      
       # Sonarr
-      - traefik.http.routers.sonarr.rule=Host(\`sonarr.silentgarden.org\`)
+      - traefik.http.routers.sonarr.rule=Host(`sonarr.silentgarden.org`)
       - traefik.http.routers.sonarr.entrypoints=web
       - traefik.http.services.sonarr.loadbalancer.server.port=8989
-
+      
       # Radarr
-      - traefik.http.routers.radarr.rule=Host(\`radarr.silentgarden.org\`)
+      - traefik.http.routers.radarr.rule=Host(`radarr.silentgarden.org`)
       - traefik.http.routers.radarr.entrypoints=web
       - traefik.http.services.radarr.loadbalancer.server.port=7878
-
+      
       # Lidarr
-      - traefik.http.routers.lidarr.rule=Host(\`lidarr.silentgarden.org\`)
+      - traefik.http.routers.lidarr.rule=Host(`lidarr.silentgarden.org`)
       - traefik.http.routers.lidarr.entrypoints=web
       - traefik.http.services.lidarr.loadbalancer.server.port=8686
-
+      
       # NZBGet
-      - traefik.http.routers.nzbget.rule=Host(\`nzbget.silentgarden.org\`)
+      - traefik.http.routers.nzbget.rule=Host(`nzbget.silentgarden.org`)
       - traefik.http.routers.nzbget.entrypoints=web
       - traefik.http.services.nzbget.loadbalancer.server.port=6789
-
+      
       # Slskd
-      - traefik.http.routers.slskd.rule=Host(\`slskd.silentgarden.org\`)
+      - traefik.http.routers.slskd.rule=Host(`slskd.silentgarden.org`)
       - traefik.http.routers.slskd.entrypoints=web
       - traefik.http.services.slskd.loadbalancer.server.port=5030
-
+      
       # Soularr
-      - traefik.http.routers.soularr.rule=Host(\`soularr.silentgarden.org\`)
+      - traefik.http.routers.soularr.rule=Host(`soularr.silentgarden.org`)
       - traefik.http.routers.soularr.entrypoints=web
       - traefik.http.services.soularr.loadbalancer.server.port=5000
     restart: unless-stopped
@@ -101,11 +101,11 @@ services:
   # ==========================================================================
   # Download Clients (VPN Protected)
   # ==========================================================================
-
+  
   qbittorrent:
     image: lscr.io/linuxserver/qbittorrent:latest
     container_name: qbittorrent
-    depends_on:
+    depends_on: 
       - gluetun
     network_mode: "service:gluetun"
     environment:
@@ -156,7 +156,7 @@ services:
   prowlarr:
     image: lscr.io/linuxserver/prowlarr:latest
     container_name: prowlarr
-    depends_on:
+    depends_on: 
       - gluetun
     network_mode: "service:gluetun"
     environment:
@@ -170,7 +170,7 @@ services:
   sonarr:
     image: lscr.io/linuxserver/sonarr:latest
     container_name: sonarr
-    depends_on:
+    depends_on: 
       - gluetun
       - prowlarr
     network_mode: "service:gluetun"
@@ -187,7 +187,7 @@ services:
   radarr:
     image: lscr.io/linuxserver/sonarr:latest
     container_name: radarr
-    depends_on:
+    depends_on: 
       - gluetun
       - prowlarr
     network_mode: "service:gluetun"
@@ -204,7 +204,7 @@ services:
   lidarr:
     image: lscr.io/linuxserver/lidarr:latest
     container_name: lidarr
-    depends_on:
+    depends_on: 
       - gluetun
       - prowlarr
     network_mode: "service:gluetun"
@@ -246,7 +246,7 @@ services:
   flaresolverr:
     image: ghcr.io/flaresolverr/flaresolverr:latest
     container_name: flaresolverr
-    depends_on:
+    depends_on: 
       - gluetun
     network_mode: "service:gluetun"
     environment:
@@ -279,7 +279,7 @@ services:
       - edge
     labels:
       - traefik.enable=true
-      - traefik.http.routers.jellyfin.rule=Host(\`jellyfin.silentgarden.org\`)
+      - traefik.http.routers.jellyfin.rule=Host(`jellyfin.silentgarden.org`)
       - traefik.http.routers.jellyfin.entrypoints=web
       - traefik.http.services.jellyfin.loadbalancer.server.port=8096
     restart: unless-stopped
@@ -298,7 +298,7 @@ services:
       - edge
     labels:
       - traefik.enable=true
-      - traefik.http.routers.jellyseerr.rule=Host(\`jellyseerr.silentgarden.org\`)
+      - traefik.http.routers.jellyseerr.rule=Host(`jellyseerr.silentgarden.org`)
       - traefik.http.routers.jellyseerr.entrypoints=web
       - traefik.http.services.jellyseerr.loadbalancer.server.port=5055
     restart: unless-stopped
@@ -320,7 +320,7 @@ services:
       - edge
     labels:
       - traefik.enable=true
-      - traefik.http.routers.homarr.rule=Host(\`homarr.silentgarden.org\`)
+      - traefik.http.routers.homarr.rule=Host(`homarr.silentgarden.org`)
       - traefik.http.routers.homarr.entrypoints=web
       - traefik.http.services.homarr.loadbalancer.server.port=7575
     restart: unless-stopped
@@ -353,7 +353,7 @@ services:
       - edge
     labels:
       - traefik.enable=true
-      - traefik.http.routers.tdarr.rule=Host(\`tdarr.silentgarden.org\`)
+      - traefik.http.routers.tdarr.rule=Host(`tdarr.silentgarden.org`)
       - traefik.http.routers.tdarr.entrypoints=web
       - traefik.http.services.tdarr.loadbalancer.server.port=8265
     restart: unless-stopped
@@ -361,7 +361,7 @@ services:
   tdarr-node:
     image: ghcr.io/haveagitgat/tdarr_node:latest
     container_name: tdarr-node
-    depends_on:
+    depends_on: 
       - tdarr
     environment:
       - TZ=${TZ}
@@ -408,7 +408,7 @@ services:
       - edge
     labels:
       - traefik.enable=true
-      - traefik.http.routers.tvapp2.rule=Host(\`tvapp2.silentgarden.org\`)
+      - traefik.http.routers.tvapp2.rule=Host(`tvapp2.silentgarden.org`)
       - traefik.http.routers.tvapp2.entrypoints=web
       - traefik.http.services.tvapp2.loadbalancer.server.port=4124
     restart: unless-stopped
