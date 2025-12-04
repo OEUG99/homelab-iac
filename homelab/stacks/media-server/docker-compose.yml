@@ -54,6 +54,7 @@ services:
       - bridge
       - edge
     labels:
+      # Traefik routing for VPN-protected services
       - traefik.enable=true
 
       # qBittorrent
