@@ -11,15 +11,11 @@ services:
       - "--entrypoints.web.address=:80"
       - "--entrypoints.websecure.address=:443"
       - "--certificatesresolvers.myresolver.acme.tlschallenge=true"
-      - "--certificatesresolvers.myresolver.acme.email=oeugenio1999@gmail.com"
+      - "--certificatesresolvers.myresolver.acme.email=you@example.com"
       - "--certificatesresolvers.myresolver.acme.storage=/letsencrypt/acme.json"
-    ports:
-      - "80:80"
-      - "443:443"
-      - "8080:8080"  # Traefik dashboard
     volumes:
       - "/var/run/docker.sock:/var/run/docker.sock:ro"
-      - "./letsencrypt:/letsencrypt"
+      - "letsencrypt:/letsencrypt"
     networks:
       - web
 
@@ -161,8 +157,31 @@ services:
       - DISABLE_UPGRADE_MODAL=true
     restart: unless-stopped
 
+  jellyfin:
+    image: lscr.io/linuxserver/jellyfin
+    container_name: jellyfin
+    volumes:
+      - "${BASE_PATH}/config/jellyfin:/config"
+      - "${BASE_PATH}/media/movies:/data/Movies"
+      - "${BASE_PATH}/media/tv-shows:/data/TVShows"
+      - "${BASE_PATH}/media/music:/data/Music"
+      - "${BASE_PATH}/media/books:/data/Books"
+    networks:
+      - web
+      - edge
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.jellyfin.rule=Host(`jellyfin.silentgarden.org`)
+      - traefik.http.routers.jellyfin.entrypoints=web
+      - traefik.http.services.jellyfin.loadbalancer.server.port=8096
+    restart: unless-stopped
+
+volumes:
+  letsencrypt:
+
 networks:
   web:
+    driver: bridge
   edge:
     external: true
     name: core_edge
