@@ -41,5 +41,4 @@ networks:
   bridge:
     driver: bridge
   edge:
-    external: true
     name: core_edge
