@@ -55,8 +55,6 @@ services:
       - --providers.docker=true
       - --providers.docker.exposedbydefault=false
       - --providers.docker.network=core_edge
-      - --providers.swarm=true                 # FIXED: Use Swarm provider for v3
-      - --providers.swarm.exposedbydefault=false
       - --entrypoints.web.address=:80
       - --api.dashboard=true
       - --api.insecure=true
@@ -79,6 +77,7 @@ services:
       labels:
         # Traefik Dashboard exposure
         - traefik.enable=true
+        - traefik.docker.network=core_edge
         - traefik.http.routers.traefik.rule=Host(`traefik.silentgarden.org`)
         - traefik.http.routers.traefik.entrypoints=web
         - traefik.http.routers.traefik.service=api@internal
@@ -96,6 +95,7 @@ services:
       labels:
         # Traefik labels for the Pi-hole Web UI (Port 80 internally)
         - "traefik.enable=true"
+        - "traefik.docker.network=core_edge"  # CRITICAL: Tell Traefik which network to use
         # Router for HTTP
         - "traefik.http.routers.pihole.entrypoints=web"
         - "traefik.http.routers.pihole.rule=Host(`pihole.silentgarden.org`)"
@@ -154,6 +154,7 @@ services:
       replicas: 1
       labels:
         - traefik.enable=true
+        - traefik.docker.network=core_edge
         - traefik.http.routers.portainer.rule=Host(`portainer.silentgarden.org`)
         - traefik.http.routers.portainer.entrypoints=web
         - traefik.http.services.portainer.loadbalancer.server.port=9000
