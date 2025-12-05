@@ -1,0 +1,45 @@
+version: "3.9"
+
+services:
+  pihole:
+    image: pihole/pihole:latest
+    container_name: pihole
+    restart: unless-stopped
+
+    # Recommended: use host networking for DNS to avoid port/NAT issues.
+    # If you use host networking, remove the `ports:` block below.
+    # network_mode: "host"
+
+    ports:
+      - "53:53/tcp"
+      - "53:53/udp"
+      - "80:80/tcp"
+      - "443:443/tcp"      # optional if you enable HTTPS in Pi-hole
+
+    environment:
+      TZ: ${TZ:-America/New_York}
+      WEBPASSWORD: ${PIHOLE_PASSWORD:-changeme}
+      DNS1: ${PIHOLE_DNS1:-1.1.1.1}
+      DNS2: ${PIHOLE_DNS2:-1.0.0.1}
+      # Only set ServerIP if not using host network and you want Pi-hole to advertise a specific IP:
+      # ServerIP: ${PIHOLE_SERVER_IP:-}
+
+    volumes:
+      - "${BASE_PATH}/config/pihole/etc-pihole:/etc/pihole"
+      - "${BASE_PATH}/config/pihole/etc-dnsmasq.d:/etc/dnsmasq.d"
+      - "${BASE_PATH}/config/pihole/logs:/var/log/pihole"
+      - "${BASE_PATH}/config/pihole/pihole-etc-hosts:/etc/hosts" # optional, if you manage /etc/hosts
+    networks:
+      - bridge
+      - edge
+
+    # Optional: expose web UI through your Traefik edge if desired (not typical for DNS)
+    labels:
+      - "traefik.enable=false"
+
+networks:
+  bridge:
+    driver: bridge
+  edge:
+    external: true
+    name: core_edge
