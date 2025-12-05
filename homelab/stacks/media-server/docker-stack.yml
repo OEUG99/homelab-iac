@@ -271,7 +271,7 @@ services:
       mode: replicated
       replicas: 1
 
-  # --- Soularr ---
+# --- Soularr ---
   soularr:
     image: mrusse08/soularr:latest
     container_name: soularr
@@ -289,11 +289,13 @@ services:
       - "${BASE_PATH}/config/soularr:/data"
       - "${BASE_PATH}/media/downloads:/downloads"
       - "${BASE_PATH}/media/downloads/slsk/incomplete:/incomplete"
-    platform: linux/amd64
     restart: unless-stopped
     deploy:
       mode: replicated
       replicas: 1
+      placement:
+        constraints: # Using constraints for architecture placement
+          - node.platform.arch == x86_64
 
   # --- FlareSolverr ---
   flaresolverr:
