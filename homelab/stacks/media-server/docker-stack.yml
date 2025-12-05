@@ -20,14 +20,20 @@ secrets:
   dns:
     external: true
 
-# Networks - 'edge' is external, 'vpn_internal' will be created by the stack
+# Networks - 'edge' is external, 'vpn_internal' and 'default' are created by the stack
 networks:
-  vpn_internal: # New internal network for services to talk to each other directly
+  # 1. Internal VPN network (for services to communicate privately)
+  vpn_internal:
     driver: overlay
     attachable: true
+  # 2. External Traefik/Cloudflare network (assumes you have a Traefik setup)
   edge:
     external: true
-    name: core_edge # Assumes this Swarm network is already created (e.g., for Traefik)
+    name: core_edge # Assumes this Swarm network is already created
+  # 3. Default internal network for the stack (used by tdarr-node)
+  default:
+    driver: overlay
+    attachable: true
 
 # ============================================================================
 # Services
@@ -38,7 +44,7 @@ services:
   # ==========================================================================
   gluetun:
     image: qmcgaw/gluetun
-    container_name: gluetun # Renamed to gluetun-vpn for clarity in Portainer tasks
+    container_name: gluetun
     cap_add:
       - NET_ADMIN
     environment:
@@ -64,7 +70,7 @@ services:
       replicas: 1
       placement:
         constraints:
-          - node.role == manager # Run on manager to serve Traefik if Traefik is not global
+          - node.role == manager
       labels:
         # Traefik routing configuration (Labels point to Gluetun's internal IP)
         - traefik.enable=true
@@ -109,18 +115,15 @@ services:
         - traefik.http.routers.soularr.rule=Host(`soularr.silentgarden.org`)
         - traefik.http.routers.soularr.entrypoints=web
         - traefik.http.services.soularr.loadbalancer.server.port=5000
-    # Port mapping is REMOVED. Traefik handles routing, and clients use the VPN network.
     restart: unless-stopped
 
   # ==========================================================================
-  # Download Clients (VPN Protected via network_mode)
+  # Download Clients (VPN Protected)
   # ==========================================================================
-  # NOTE: network_mode: "service:gluetun" is NOT supported in Swarm Mode (v3.x)
-  # The correct Swarm pattern is to connect them to the internal VPN network.
 
   qbittorrent:
     image: lscr.io/linuxserver/qbittorrent:latest
-    container_name: qbittorrent # Ignored by Swarm
+    container_name: qbittorrent
     depends_on:
       - gluetun
     networks:
@@ -136,13 +139,9 @@ services:
     deploy:
       mode: replicated
       replicas: 1
-      # Tell qBittorrent to bind to the VPN interface IP inside Gluetun
       labels:
         - gluetun.bind=true
     restart: unless-stopped
-
-  # ... (NZBGet, slskd, Prowlarr, Sonarr, Radarr, Lidarr, Soularr, flaresolverr services are
-  # simplified similar to qbittorrent: removed network_mode and added vpn_internal network)
 
   # --- NZBGet ---
   nzbget:
@@ -287,235 +286,4 @@ services:
       - TZ=${TZ}
       - SCRIPT_INTERVAL=300
     volumes:
-      - "${BASE_PATH}/config/soularr:/data"
-      - "${BASE_PATH}/media/downloads:/downloads"
-      - "${BASE_PATH}/media/downloads/slsk/incomplete:/incomplete"
-    platform: linux/amd64
-    restart: unless-stopped
-    deploy:
-      mode: replicated
-      replicas: 1
-
-  # --- FlareSolverr ---
-  flaresolverr:
-    image: ghcr.io/flaresolverr/flaresolverr:latest
-    container_name: flaresolverr
-    depends_on:
-      - gluetun
-    networks:
-      - vpn_internal
-    environment:
-      - LOG_LEVEL=info
-      - TZ=${TZ}
-    restart: unless-stopped
-    deploy:
-      mode: replicated
-      replicas: 1
-
-  # ==========================================================================
-  # Media Server & Frontend (Non-VPN) - Connected only to 'edge' network
-  # ==========================================================================
-
-  jellyfin:
-    image: lscr.io/linuxserver/jellyfin:latest
-    container_name: jellyfin # Ignored by Swarm
-    ports:
-      - target: 8096
-        published: 8096
-        protocol: tcp
-        mode: ingress
-      - target: 7359
-        published: 7359
-        protocol: udp
-        mode: ingress
-    environment:
-      - PUID=${PUID}
-      - PGID=${PGID}
-      - TZ=${TZ}
-    volumes:
-      - "${BASE_PATH}/config/jellyfin:/config"
-      - "${BASE_PATH}/media/movies:/data/Movies"
-      - "${BASE_PATH}/media/tv-shows:/data/TVShows"
-      - "${BASE_PATH}/media/music:/data/Music"
-      - "${BASE_PATH}/media/books:/data/Books"
-    networks:
-      - edge
-    deploy:
-      mode: replicated
-      replicas: 1
-      labels:
-        - traefik.enable=true
-        - traefik.http.routers.jellyfin.rule=Host(`jellyfin.silentgarden.org`)
-        - traefik.http.routers.jellyfin.entrypoints=web
-        - traefik.http.services.jellyfin.loadbalancer.server.port=8096
-    restart: unless-stopped
-
-  # --- (jellyseerr, homarr, tdarr, tvapp2 services are similar) ---
-
-  jellyseerr:
-    image: fallenbagel/jellyseerr:latest
-    container_name: jellyseerr
-    ports:
-      - target: 5055
-        published: 5055
-        protocol: tcp
-        mode: ingress
-    environment:
-      - TZ=${TZ}
-    volumes:
-      - "${BASE_PATH}/config/jellyseerr:/app/config"
-    networks:
-      - edge
-    deploy:
-      mode: replicated
-      replicas: 1
-      labels:
-        - traefik.enable=true
-        - traefik.http.routers.jellyseerr.rule=Host(`jellyseerr.silentgarden.org`)
-        - traefik.http.routers.jellyseerr.entrypoints=web
-        - traefik.http.services.jellyseerr.loadbalancer.server.port=5055
-    restart: unless-stopped
-
-  homarr:
-    image: ghcr.io/ajnart/homarr:latest
-    container_name: homarr
-    ports:
-      - target: 7575
-        published: 7575
-        protocol: tcp
-        mode: ingress
-    environment:
-      - TZ=${TZ}
-      - DISABLE_UPGRADE_MODAL=true
-    volumes:
-      - "${BASE_PATH}/config/homarr:/app/data/configs"
-      - "${BASE_PATH}/config/homarr/icons:/app/public/icons"
-      - "${BASE_PATH}/media:/data"
-    networks:
-      - edge
-    deploy:
-      mode: replicated
-      replicas: 1
-      labels:
-        - traefik.enable=true
-        - traefik.http.routers.homarr.rule=Host(`homarr.silentgarden.org`)
-        - traefik.http.routers.homarr.entrypoints=web
-        - traefik.http.services.homarr.loadbalancer.server.port=7575
-    restart: unless-stopped
-
-  # --- Tdarr ---
-  tdarr:
-    image: ghcr.io/haveagitgat/tdarr:latest
-    container_name: tdarr
-    ports:
-      - target: 8265
-        published: 8265
-        protocol: tcp
-        mode: ingress
-      - target: 8266
-        published: 8266
-        protocol: tcp
-        mode: ingress
-    environment:
-      - TZ=${TZ}
-      - PUID=${PUID}
-      - PGID=${PGID}
-      - serverIP=0.0.0.0
-      - serverPort=8266
-      - webUIPort=8265
-    volumes:
-      - "${BASE_PATH}/config/tdarr/server:/app/server"
-      - "${BASE_PATH}/config/tdarr/configs:/app/configs"
-      - "${BASE_PATH}/config/tdarr/logs:/app/logs"
-      - "${BASE_PATH}/transcode:/temp"
-      - "${BASE_PATH}/media:/media"
-    networks:
-      - edge
-    deploy:
-      mode: replicated
-      replicas: 1
-      labels:
-        - traefik.enable=true
-        - traefik.http.routers.tdarr.rule=Host(`tdarr.silentgarden.org`)
-        - traefik.http.routers.tdarr.entrypoints=web
-        - traefik.http.services.tdarr.loadbalancer.server.port=8265
-    restart: unless-stopped
-
-  # --- Tdarr Node (Does NOT need edge network) ---
-  tdarr-node:
-    image: ghcr.io/haveagitgat/tdarr_node:latest
-    container_name: tdarr-node
-    depends_on:
-      - tdarr
-    environment:
-      - TZ=${TZ}
-      - PUID=${PUID}
-      - PGID=${PGID}
-      - nodeID=Node-1
-      - serverIP=tdarr # Traefik is not used, connect via service name
-      - serverPort=8266
-    volumes:
-      - "${BASE_PATH}/config/tdarr/configs:/app/configs"
-      - "${BASE_PATH}/config/tdarr/logs:/app/logs"
-      - "${BASE_PATH}/transcode:/temp"
-      - "${BASE_PATH}/media:/media"
-    networks:
-      # No network defined, it uses the default internal stack network for tdarr service discovery.
-    deploy:
-      mode: replicated
-      replicas: 1
-    restart: unless-stopped
-
-  # --- TVApp2 ---
-  tvapp2:
-    image: ghcr.io/thebinaryninja/tvapp2:latest
-    container_name: tvapp2
-    ports:
-      - target: 4124
-        published: 4124
-        protocol: tcp
-        mode: ingress
-    environment:
-      - TZ=${TZ}
-      - WEB_IP=0.0.0.0
-      - WEB_PORT=4124
-      - DIR_RUN=/usr/bin/app
-      - STREAM_QUALITY=hd
-      - FILE_M3U=playlist.m3u8
-      - FILE_EPG=xmltv.xml
-      - LOG_LEVEL=4
-    volumes:
-      - /etc/timezone:/etc/timezone:ro
-      - /etc/localtime:/etc/localtime:ro
-      - /var/run/docker.sock:/var/run/docker.sock # Required for docker-in-docker
-      - "${BASE_PATH}/config/tvapp2:/config"
-      - "${BASE_PATH}/tvapp2/app:/usr/bin/app"
-    networks:
-      - edge
-    deploy:
-      mode: replicated
-      replicas: 1
-      labels:
-        - traefik.enable=true
-        - traefik.http.routers.tvapp2.rule=Host(`tvapp2.silentgarden.org`)
-        - traefik.http.routers.tvapp2.entrypoints=web
-        - traefik.http.services.tvapp2.loadbalancer.server.port=4124
-    restart: unless-stopped
-
-  # ==========================================================================
-  # Utilities
-  # ==========================================================================
-
-  qbit-restarter:
-    image: docker:cli
-    container_name: qbit-restarter
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-    command: >
-      sh -c "echo '0 */3 * * * docker restart core_qbittorrent' | crontab - && crond -f"
-    networks:
-      - edge # Add to edge for access to docker.sock
-    deploy:
-      mode: replicated
-      replicas: 1
-    restart: always
+      - "${BASE_PATH}/config/soularr
