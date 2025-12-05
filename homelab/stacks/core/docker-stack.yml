@@ -2,7 +2,6 @@ version: "3.9"
 
 # --- Swarm Networks ---
 networks:
-  # The overlay network for all service communication
   edge:
     name: edge
     driver: overlay
@@ -13,6 +12,9 @@ volumes:
   portainer_data:
     name: portainer_data
     external: true
+  pihole_data:
+    name: pihole_data
+    driver: local
 
 # --- Secrets ---
 secrets:
@@ -54,7 +56,7 @@ services:
     command:
       - --providers.docker=true
       - --providers.docker.exposedbydefault=false
-      - --providers.docker.network=core_edge
+      - --providers.docker.network=edge
       - --entrypoints.web.address=:80
       - --api.dashboard=true
       - --api.insecure=true
@@ -62,12 +64,10 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
     ports:
-      # CRITICAL: Host mode for entrypoints 80/443 (only 80 used here)
       - target: 80
         published: 80
         protocol: tcp
         mode: host
-      # Traefik Dashboard port
       - target: 8080
         published: 8080
         protocol: tcp
@@ -75,13 +75,11 @@ services:
     deploy:
       mode: global
       labels:
-        # Traefik Dashboard exposure
         - traefik.enable=true
-        - traefik.docker.network=core_edge
+        - traefik.docker.network=edge
         - 'traefik.http.routers.traefik.rule=Host(`traefik.silentgarden.org`)'
         - traefik.http.routers.traefik.entrypoints=web
         - traefik.http.routers.traefik.service=api@internal
-
 
   # --------------------------------------------------------------------------
   # PORTAINER (Swarm Management UI)
@@ -104,7 +102,46 @@ services:
       replicas: 1
       labels:
         - traefik.enable=true
-        - traefik.docker.network=core_edge
+        - traefik.docker.network=edge
         - 'traefik.http.routers.portainer.rule=Host(`portainer.silentgarden.org`)'
         - traefik.http.routers.portainer.entrypoints=web
         - traefik.http.services.portainer.loadbalancer.server.port=9000
+
+  # --------------------------------------------------------------------------
+  # PIHOLE (DNS + Web UI)
+  # --------------------------------------------------------------------------
+  pihole:
+    image: pihole/pihole:latest
+    restart: unless-stopped
+    networks:
+      - edge
+    environment:
+      - TZ=${TZ}
+      - WEBPASSWORD=${PIHOLE_PASSWORD}   # set your password in .env
+      - DNS1=1.1.1.1
+      - DNS2=1.0.0.1
+    volumes:
+      - pihole_data:/etc/pihole
+      - pihole_data:/etc/dnsmasq.d
+    ports:
+      - target: 53
+        published: 53
+        protocol: tcp
+        mode: ingress
+      - target: 53
+        published: 53
+        protocol: udp
+        mode: ingress
+      - target: 80
+        published: 8081
+        protocol: tcp
+        mode: ingress
+    deploy:
+      mode: replicated
+      replicas: 1
+      labels:
+        - traefik.enable=true
+        - traefik.docker.network=edge
+        - 'traefik.http.routers.pihole.rule=Host(`pihole.silentgarden.org`)'
+        - traefik.http.routers.pihole.entrypoints=web
+        - traefik.http.services.pihole.loadbalancer.server.port=80
