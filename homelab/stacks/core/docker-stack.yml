@@ -54,7 +54,6 @@ services:
     command:
       - --providers.docker=true
       - --providers.docker.exposedbydefault=false
-      # FIX 1: Traefik must point to the *name* of the network it's connected to.
       - --providers.docker.network=edge
       - --entrypoints.web.address=:80
       - --api.dashboard=true
@@ -63,21 +62,20 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
     ports:
-      # FIX 2: Traefik requires Host mode ports for the entrypoints (80, 443)
-      # when running as a global service to guarantee traffic reaches it on every node.
+      # CRITICAL: Host mode for entrypoints 80/443 (only 80 used here)
       - target: 80
         published: 80
         protocol: tcp
         mode: host
-      # Traefik Dashboard port, for monitoring/API access
+      # Traefik Dashboard port
       - target: 8080
         published: 8080
         protocol: tcp
         mode: ingress
     deploy:
-      mode: global # Ensures Traefik runs on all nodes
+      mode: global
       labels:
-        # Traefik Dashboard exposure (using internal service)
+        # Traefik Dashboard exposure
         - traefik.enable=true
         - traefik.http.routers.traefik.rule=Host(`traefik.silentgarden.org`)
         - traefik.http.routers.traefik.entrypoints=web
@@ -88,9 +86,8 @@ services:
   # --------------------------------------------------------------------------
   pihole:
     image: pihole/pihole:latest
-    # Pi-hole should generally be deployed on a specific node or as a single replica.
-    # We keep 'global' as you specified, but it's only truly functional where the ports are open.
     deploy:
+      # For DNS, pihole needs to run on the node where ports 53 are available.
       mode: global
       restart_policy:
         condition: on-failure
@@ -100,19 +97,18 @@ services:
       WEBPASSWORD: ${PIHOLE_PASSWORD:-changeme}
       DNS1: ${PIHOLE_DNS1:-1.1.1.1}
       DNS2: ${PIHOLE_DNS2:-1.0.0.1}
-      # FIX 3: PIHOLE_INTERFACE must be set to 'eth0' for bridge/overlay networking.
+      # Required for correct Pi-hole networking inside Docker
       PIHOLE_INTERFACE: eth0
-      # FIX 4: Set the correct environment variable for the internal IP address.
-      # This is crucial to avoid the 404 error when Traefik forwards the request.
-      FTLCONF_LOCAL_IPV4: 192.168.10.133 # Use your intended Host IP here.
-      # Removed VIRTUAL_HOST and other web-related ENV vars as Traefik handles routing.
+      # Required for the web interface to work correctly with Traefik
+      FTLCONF_LOCAL_IPV4: 192.168.10.133 # Use your intended Host IP
+      # We rely on Traefik for web routing, so no VIRTUAL_HOST/PORT needed.
 
     volumes:
       - "${BASE_PATH}/config/pihole/etc-pihole:/etc/pihole"
       - "${BASE_PATH}/config/pihole/etc-dnsmasq.d:/etc/dnsmasq.d"
       - "${BASE_PATH}/config/pihole/logs:/var/log/pihole"
 
-    # 1. Manually publish DNS port (53)
+    # CRITICAL: Manually publish DNS ports 53/tcp and 53/udp in host mode
     ports:
       - target: 53
         published: 53
@@ -123,20 +119,19 @@ services:
         protocol: udp
         mode: host
 
-    # 2. Add Traefik labels for the Web UI (Port 80)
+    # Traefik labels for the Pi-hole Web UI (Port 80 internally)
     labels:
       - "traefik.enable=true"
       # Router for HTTP
       - "traefik.http.routers.pihole.entrypoints=web"
       - "traefik.http.routers.pihole.rule=Host(`pihole.silentgarden.org`)"
-      # Service definition
-      # FIX 5: Use the correct internal port for Pi-hole's web interface (it's 80).
+      # Service definition (internal port 80)
       - "traefik.http.services.pihole.loadbalancer.server.port=80"
-      # FIX 6: Add a path prefix for the Pi-hole web UI. This is critical for the 404 fix.
+      # Middleware to strip the /admin path required by Pi-hole's web interface
       - "traefik.http.routers.pihole.middlewares=pihole-strip@docker"
       - "traefik.http.middlewares.pihole-strip.stripprefix.prefixes=/admin"
 
-    # 3. Connect to the overlay network
+    # Connect to the overlay network
     networks:
       - edge
 
