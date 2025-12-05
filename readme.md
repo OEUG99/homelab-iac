@@ -1,10 +1,12 @@
 # Homelab Infrastructure as Code
 
-Automated, containerized homelab infrastructure using Docker Compose and Portainer for deployment and management.
+Automated, containerized homelab infrastructure using Docker Swarm and Portainer for orchestration and management.
 
 ## Overview
 
-This repository contains a complete homelab setup with four main stacks providing networking, security monitoring, file collaboration, and media automation services. All stacks are designed for deployment via Portainer, with the core stack providing the foundation for the entire infrastructure.
+This repository contains a complete homelab setup with four main stacks providing networking, security monitoring, file collaboration, and media automation services. All stacks are deployed as Docker Swarm services via Portainer, with the core stack providing the foundation for the entire infrastructure.
+
+**Domain:** silentgarden.org
 
 ## Architecture
 
@@ -16,6 +18,7 @@ This repository contains a complete homelab setup with four main stacks providin
                               v
             +------------------------------------+
             |         CORE STACK                 |
+            |       (Primary Server)             |
             |                                    |
             |       +------------------+         |
             |       |  Cloudflared     |<----+   |
@@ -26,8 +29,8 @@ This repository contains a complete homelab setup with four main stacks providin
             |       |     Traefik      |-----+   |
             |       | (Reverse Proxy)  |         |
             |       +------------------+         |
-            |                                    |
-            |       +------------------+         |
+            |                |                   |
+            |       +--------v---------+         |
             |       |    Portainer     |         |
             |       | (Stack Manager)  |         |
             |       +------------------+         |
@@ -47,6 +50,25 @@ This repository contains a complete homelab setup with four main stacks providin
      |   Dashboard |   |             |   | - Tdarr     |
      |             |   |             |   | - Gluetun   |
      +-------------+   +-------------+   +-------------+
+                              |
+                              | DNS Queries
+                              |
+            +-----------------v-----------------+
+            |          DNS STACK                |
+            |       (Proxmox Host)              |
+            |                                   |
+            |       +------------------+        |
+            |       |     Pi-hole      |        |
+            |       |  (DNS Server)    |        |
+            |       +------------------+        |
+            |                |                  |
+            |       +--------v---------+        |
+            |       |    Unbound       |        |
+            |       | (Recursive DNS)  |        |
+            |       +------------------+        |
+            +-----------------------------------+
+                              |
+                    Network-wide DNS
 ```
 
 ### Stack Responsibilities
@@ -54,13 +76,18 @@ This repository contains a complete homelab setup with four main stacks providin
 #### Core Stack (Foundation)
 **Location:** `homelab/stacks/core/`
 
-The foundational layer providing networking, routing, and management services:
+The foundational layer providing networking, routing, and orchestration services:
 
-- **Traefik:** Reverse proxy with automatic service discovery
-- **Portainer:** Container management UI for deploying other stacks
+- **Traefik:** Reverse proxy with automatic service discovery (Swarm-aware)
+- **Portainer:** Swarm cluster management UI for deploying stacks
 - **Cloudflared:** Secure tunnel for remote access via Cloudflare
 
-**Deploy first** - All other stacks are deployed through Portainer.
+**Deploy first** - Initializes Docker Swarm and provides management interface for other stacks.
+
+**Swarm Configuration:**
+- Overlay network: `core_edge`
+- Services with rolling updates
+- Health checks and automatic recovery
 
 #### Security Stack
 **Location:** `homelab/stacks/security/`
@@ -120,6 +147,30 @@ Automated media management with VPN-protected downloads:
 - **Jellyseerr:** Media request management
 - **Homarr:** Service dashboard
 
+#### DNS Stack
+**Location:** `homelab/stacks/dns/`
+
+Network-wide DNS and ad-blocking deployed on separate Proxmox host:
+
+- **Pi-hole:** Network-level ad blocking and DNS server
+- **Unbound:** Recursive DNS resolver for privacy
+
+**Features:**
+- Network-wide ad and tracker blocking
+- Custom DNS records for local services
+- DHCP server (optional)
+- DNS-based service discovery
+- Query logging and statistics
+- Recursive DNS resolution (no third-party DNS)
+- DNSSEC validation
+- Cross-network DNS resolution
+
+**Network Integration:**
+- Provides DNS for both Proxmox network and primary server network
+- Resolves local service hostnames (e.g., `portainer.silentgarden.org`, `jellyfin.silentgarden.org`)
+- Enables seamless communication between stacks across networks
+- Acts as primary DNS for all homelab devices
+
 ## Directory Structure
 
 ```
@@ -145,8 +196,14 @@ homelab-iac/
         │   ├── docker-compose.yml
         │   └── README.md
         │
-        └── media-server/              # Media automation stack
+        ├── media-server/              # Media automation stack
+        │   ├── docker-compose.yml
+        │   └── README.md
+        │
+        └── dns/                       # Pi-hole DNS stack (Proxmox)
             ├── docker-compose.yml
+            ├── .env.example
+            ├── custom.list            # Local DNS records
             └── README.md
 ```
 
@@ -154,12 +211,20 @@ homelab-iac/
 
 ### System Requirements
 
-- **OS:** Linux-based system (Ubuntu, Debian, etc.) or macOS for development
-- **Docker Engine:** 20.10 or higher
-- **Docker Compose:** v2 or higher
+**Primary Server (Core, Security, Office, Media):**
+- **OS:** Linux-based system (Ubuntu, Debian, etc.)
+- **Docker Engine:** 20.10 or higher (with Swarm mode enabled)
 - **RAM:** Minimum 8GB (16GB+ recommended)
 - **Storage:** Minimum 50GB (more for media storage)
 - **Network:** Static IP or DDNS for external access
+
+**DNS Server (Proxmox Host):**
+- **OS:** Proxmox VE 7.0+ or any Linux system with Docker support
+- **Docker Engine:** 20.10 or higher
+- **RAM:** Minimum 2GB (4GB recommended)
+- **Storage:** 10GB minimum
+- **Network:** Static IP required (will be primary DNS server)
+- **Network Access:** Must be reachable from primary server network
 
 ### Required Accounts/Subscriptions
 
@@ -169,14 +234,17 @@ homelab-iac/
 
 ## Quick Start
 
-### Step 1: Deploy Core Stack
+### Step 1: Initialize Docker Swarm and Deploy Core Stack
 
-The core stack must be deployed first as it provides Portainer for managing other stacks.
+The core stack must be deployed first as it initializes Docker Swarm and provides Portainer for managing other stacks.
 
 ```bash
 # Clone the repository
 git clone <your-repo-url>
 cd homelab-iac/homelab/stacks/core
+
+# Initialize Docker Swarm (if not already done)
+docker swarm init --advertise-addr <primary-server-ip>
 
 # Create environment file
 cp .env.example .env
@@ -186,30 +254,106 @@ nano .env
 # Required:
 # - CLOUDFLARE_TUNNEL_TOKEN (from Cloudflare dashboard)
 # - TZ (your timezone)
+# - DOMAIN=silentgarden.org
 
-# Deploy core services
-docker compose up -d
+# Create Docker secrets for sensitive data
+echo "your_cloudflare_tunnel_token" | docker secret create cloudflare_tunnel_token -
+echo "your_secure_portainer_password" | docker secret create portainer_password -
+
+# Create overlay network for core services
+docker network create --driver overlay --attachable core_edge
+
+# Deploy core stack
+docker stack deploy -c docker-compose.yml core
 
 # Verify deployment
-docker compose ps
+docker stack services core
+docker service ls
+
+# Check service logs
+docker service logs core_traefik
+docker service logs core_portainer
 
 # Access Portainer
 # Local: http://localhost:9000
-# Domain: http://portainer.silentgarden.org (via Traefik)
+# Domain: https://portainer.silentgarden.org (via Traefik)
 ```
 
 **Initial Portainer Setup:**
 
-1. Access Portainer at `http://localhost:9000`
+1. Access Portainer at `http://localhost:9000` or `https://portainer.silentgarden.org`
 2. Create admin user account
-3. Connect to local Docker environment
-4. Configure Git repository for stack deployments
+3. Select **Docker Swarm** environment
+4. Connect to local Swarm cluster
+5. Configure Git repository for stack deployments
+
+### Step 1.5: Deploy DNS Stack (Proxmox Host)
+
+The DNS stack is deployed standalone on your Proxmox host (not part of the Swarm cluster) to provide network-wide DNS services.
+
+```bash
+# SSH into your Proxmox host or DNS server
+ssh user@proxmox-host
+
+# Clone the repository
+git clone <your-repo-url>
+cd homelab-iac/homelab/stacks/dns
+
+# Create environment file
+cp .env.example .env
+
+# Edit .env with your configuration
+nano .env
+# Required:
+# - PIHOLE_DNS_1=127.0.0.1#5335  (Unbound)
+# - PIHOLE_DNS_2=1.1.1.1          (Fallback)
+# - WEBPASSWORD=your_secure_password
+# - TZ=America/New_York
+# - SERVERIP=<static-ip-of-this-host>
+# - VIRTUAL_HOST=pihole.silentgarden.org
+
+# Create custom DNS records file
+nano custom.list
+# Add local DNS entries:
+# 192.168.1.10    portainer.silentgarden.org
+# 192.168.1.10    traefik.silentgarden.org
+# 192.168.1.10    jellyfin.silentgarden.org
+# 192.168.1.10    sonarr.silentgarden.org
+# <add your service IPs and hostnames>
+
+# Deploy DNS services (using docker-compose, not Swarm)
+docker-compose up -d
+
+# Verify deployment
+docker-compose ps
+
+# Check Pi-hole is responding
+dig @127.0.0.1 google.com
+```
+
+**Initial Pi-hole Setup:**
+
+1. Access Pi-hole admin at `http://<proxmox-ip>/admin` or `http://pihole.silentgarden.org/admin`
+2. Login with your `WEBPASSWORD`
+3. Navigate to **Settings** → **DNS**
+   - Verify Unbound is set as upstream DNS (127.0.0.1#5335)
+4. Navigate to **Local DNS** → **DNS Records**
+   - Verify custom.list entries are loaded
+5. Configure your router to use Pi-hole as primary DNS:
+   - Primary DNS: `<proxmox-ip>`
+   - Secondary DNS: `1.1.1.1` (fallback)
+6. Or manually configure DNS on primary server:
+   ```bash
+   # Edit /etc/resolv.conf on primary server
+   nameserver <proxmox-ip>
+   nameserver 1.1.1.1
+   ```
 
 ### Step 2: Deploy Additional Stacks via Portainer
 
-Once the core stack is running, deploy other stacks through Portainer's web interface.
+Once the core stack is running, deploy other stacks through Portainer's Swarm management interface.
 
-#### General Portainer Deployment Process
+#### General Portainer Swarm Stack Deployment Process
 
 For each stack (security, office, media-server):
 
@@ -226,10 +370,20 @@ For each stack (security, office, media-server):
 3. **Set Environment Variables:**
    - Add required variables (see stack-specific sections below)
    - Use Portainer's environment variable editor
+   - Consider using Docker Secrets for sensitive data
 
-4. **Deploy:**
+4. **Deploy as Swarm Stack:**
    - Click "Deploy the stack"
+   - Portainer will deploy services to the Swarm cluster
    - Monitor logs for deployment progress
+   - Services will be distributed with defined replicas and placement
+
+**Swarm Benefits:**
+- Automatic service recovery and restart
+- Rolling updates with zero downtime
+- Service scaling and load balancing
+- Overlay networking for service communication
+- Secrets management for sensitive data
 
 #### Security Stack Deployment
 
@@ -302,6 +456,37 @@ TZ=America/New_York
 - Access services (see `media-server/README.md`)
 - Configure automation services
 
+#### DNS Stack Configuration (Manual)
+
+The DNS stack is deployed directly on the Proxmox host (not via Portainer) as described in **Step 1.5**.
+
+**Post-Deployment Configuration:**
+
+1. **Add Local DNS Records:**
+   - Edit `custom.list` on Proxmox host
+   - Add entries for all homelab services
+   - Restart Pi-hole: `docker compose restart pihole`
+
+2. **Configure Cross-Network DNS:**
+   - Ensure primary server uses Proxmox host as DNS
+   - Verify resolution: `nslookup portainer.local <proxmox-ip>`
+
+3. **Enable Conditional Forwarding (Optional):**
+   - In Pi-hole admin: **Settings** → **DNS** → **Conditional Forwarding**
+   - Local network: `192.168.1.0/24` (your network)
+   - Router IP: Your router address
+   - Local domain: `local`
+
+4. **Verify Cross-Network Communication:**
+   ```bash
+   # From primary server, test DNS resolution
+   ping jellyfin.local
+   ping portainer.local
+   
+   # From any device on network
+   ping pihole.local
+   ```
+
 ## Service Access Points
 
 ### Core Stack
@@ -338,18 +523,77 @@ TZ=America/New_York
 | qBittorrent | `http://<host>:8282` | Torrent client |
 | Tdarr | `http://<host>:8265` | Media transcoding |
 
+### DNS Stack
+
+| Service | URL | Purpose |
+|---------|-----|---------|
+| Pi-hole Admin | `http://<proxmox-ip>/admin` | DNS management UI |
+| Pi-hole DNS | `<proxmox-ip>:53` | DNS server |
+| Unbound | `127.0.0.1:5335` | Recursive DNS resolver |
+
 ## Network Architecture
 
 ### Network Isolation
 
-Each stack uses its own isolated network:
+Each stack uses Docker Swarm overlay networks for service communication:
 
-- **Core:** `edge` network (bridge)
-- **Security:** Default bridge network (Docker configs for configuration)
-- **Office:** `seafile-net` (bridge)
+- **Core:** `core_edge` overlay network (attachable)
+- **Security:** `security_net` overlay network
+- **Office:** `seafile-net` overlay network
 - **Media Server:** Mixed
+  - `media_net` overlay network for inter-service communication
   - VPN services use `service:gluetun` network mode
-  - Public services use default bridge
+  - Services attached to `core_edge` for Traefik routing
+- **DNS Stack:** `pihole-net` bridge network (standalone on Proxmox host)
+
+**Overlay Network Benefits:**
+- Automatic service discovery across Swarm nodes
+- Encrypted inter-service communication
+- Network segmentation and isolation
+- Load balancing for replicated services
+- Support for multi-host deployments
+
+### Cross-Network Communication
+
+The DNS stack bridges both networks by providing centralized DNS services:
+
+**Network Topology:**
+```
+┌─────────────────────────────────────────────────────┐
+│                  Home Network                       │
+│                  (192.168.1.0/24)                   │
+├─────────────────────────────────────────────────────┤
+│                                                     │
+│  ┌──────────────────┐      ┌──────────────────┐   │
+│  │  Primary Server  │      │  Proxmox Host    │   │
+│  │  (192.168.1.10)  │◄────►│  (192.168.1.20)  │   │
+│  │                  │      │                  │   │
+│  │  - Core Stack    │      │  - Pi-hole       │   │
+│  │  - Security      │      │  - Unbound       │   │
+│  │  - Office        │      │                  │   │
+│  │  - Media         │      │  DNS: port 53    │   │
+│  │                  │      │  Admin: port 80  │   │
+│  └──────────────────┘      └──────────────────┘   │
+│          │                          │              │
+│          └──────────┬───────────────┘              │
+│                     │                              │
+│                     ▼                              │
+│           All devices use Proxmox                  │
+│           as primary DNS server                    │
+└─────────────────────────────────────────────────────┘
+```
+
+**DNS Resolution Flow:**
+1. Device queries `jellyfin.local` → Pi-hole (192.168.1.20:53)
+2. Pi-hole checks custom.list → Returns 192.168.1.10
+3. Device connects to Jellyfin on primary server
+4. External queries forwarded to Unbound for recursive resolution
+
+**Benefits:**
+- Services accessible by hostname across both networks
+- Single point of DNS management
+- Network-wide ad blocking
+- Privacy through recursive DNS (no third-party DNS queries)
 
 ### Port Management
 
@@ -359,6 +603,7 @@ Port assignments are designed to avoid conflicts:
 - **Security:** 1514/udp, 1515, 514/udp, 5601, 9200, 55000
 - **Office:** 8081
 - **Media:** 5055, 6881, 7575, 7878, 8096, 8181, 8265-8267, 8282, 8989, 9696
+- **DNS (Proxmox):** 53/tcp, 53/udp, 80 (Pi-hole admin), 5335 (Unbound)
 
 ### VPN Routing (Media Stack)
 
@@ -389,6 +634,11 @@ Each stack manages its own volumes:
 - All data stored under `${BASE_PATH}` directory
 - Configuration, media, and working directories
 
+**DNS Stack:**
+- `pihole-data`: Pi-hole configuration and blocklists
+- `pihole-dnsmasq`: DNS configuration files
+- `unbound-data`: Unbound configuration and cache
+
 ### Backup Recommendations
 
 Critical data to backup regularly:
@@ -397,6 +647,7 @@ Critical data to backup regularly:
 - **Security:** All Wazuh volumes (especially logs and data)
 - **Office:** MySQL and Seafile data directories
 - **Media:** Configuration directories (not media files)
+- **DNS:** Pi-hole configuration, custom.list, and blocklists
 
 See individual stack README files for detailed backup procedures.
 
@@ -427,14 +678,20 @@ docker logs -f <container-name>
 
 ```bash
 cd homelab/stacks/core
-docker compose pull
-docker compose up -d
+
+# Pull latest images
+docker service update --image traefik:latest core_traefik
+docker service update --image portainer/portainer-ce:latest core_portainer
+
+# Or redeploy entire stack
+docker stack deploy -c docker-compose.yml core
 ```
 
 **Other Stacks (via Portainer):**
 
 - Enable automatic updates in stack configuration, or
-- Manual update: **Stacks** → Select stack → "Pull and redeploy"
+- Manual update: **Stacks** → Select stack → **Update the stack**
+- Portainer will perform rolling updates with zero downtime
 
 ## Troubleshooting
 
@@ -443,14 +700,17 @@ docker compose up -d
 #### Portainer Not Accessible
 
 ```bash
-# Check core stack status
-cd homelab/stacks/core
-docker compose ps
+# Check core stack services
+docker stack services core
+
+# Check Portainer service specifically
+docker service ls | grep portainer
+docker service ps core_portainer
 
 # Check Portainer logs
-docker logs portainer
+docker service logs core_portainer
 
-# Verify port binding
+# Verify port binding on Swarm node
 netstat -tulpn | grep 9000
 ```
 
@@ -470,16 +730,52 @@ netstat -tulpn | grep 9000
 
 #### Service Can't Be Reached
 
-- Verify service is running: `docker ps`
-- Check port mappings: `docker port <container-name>`
-- Review service logs
+- Verify service is running: `docker service ls`
+- Check service status: `docker service ps <service-name>`
+- Review service logs: `docker service logs <service-name>`
+- Verify port mappings: `docker service inspect <service-name>`
+- Check Swarm node status: `docker node ls`
+- Verify overlay network: `docker network inspect <network-name>`
 - Verify firewall rules
+
+#### DNS Resolution Issues
+
+**Symptoms:** Services not resolving by hostname, only IP works
+
+```bash
+# On primary server, check DNS configuration
+cat /etc/resolv.conf
+# Should show: nameserver <proxmox-ip>
+
+# Test DNS resolution
+nslookup jellyfin.local <proxmox-ip>
+dig @<proxmox-ip> portainer.local
+
+# Check Pi-hole status on Proxmox host
+cd homelab/stacks/dns
+docker compose ps
+docker logs pihole
+
+# Verify custom.list is loaded
+docker exec pihole cat /etc/pihole/custom.list
+
+# Restart Pi-hole if needed
+docker compose restart pihole
+```
+
+**Common fixes:**
+- Verify Proxmox host is reachable: `ping <proxmox-ip>`
+- Check firewall isn't blocking port 53
+- Ensure custom.list has correct entries
+- Verify primary server DNS points to Proxmox
+- Restart dnsmasq: `docker exec pihole pihole restartdns`
 
 ### Getting Help
 
 - **Stack-specific issues:** See individual README files in each stack directory
 - **Wazuh:** [Official Documentation](https://documentation.wazuh.com/)
 - **Seafile:** [Seafile Manual](https://manual.seafile.com/)
+- **Pi-hole:** [Pi-hole Documentation](https://docs.pi-hole.net/)
 - **Media Stack Components:** Check individual project documentation
 
 ## Security Considerations
@@ -494,6 +790,8 @@ netstat -tulpn | grep 9000
 - **Monitor Logs:** Use Wazuh for security monitoring
 - **Network Segmentation:** Use Docker networks to isolate services
 - **VPN Protection:** All download traffic routed through VPN
+- **Secure DNS:** Pi-hole provides DNS-level security and privacy
+- **DNSSEC:** Enable in Unbound for DNS validation
 
 ### Exposed Ports
 
@@ -502,6 +800,8 @@ Be cautious about exposing these ports to the internet:
 - **9000 (Portainer):** Consider VPN or authentication
 - **5601 (Wazuh):** Sensitive security data
 - **8081 (Seafile):** Contains user files
+- **53 (DNS):** Should only be accessible on local network
+- **80 (Pi-hole Admin):** Use strong password, consider VPN
 - **Media ports:** Use authentication for remote access
 
 ### Secrets Management
@@ -522,15 +822,26 @@ For local testing:
 git clone <repo-url>
 cd homelab-iac
 
+# Initialize Swarm (if testing Swarm locally)
+docker swarm init
+
 # Test individual stack
 cd homelab/stacks/<stack-name>
-docker compose up -d
+docker stack deploy -c docker-compose.yml test_<stack-name>
+
+# View services
+docker stack services test_<stack-name>
 
 # View logs
-docker compose logs -f
+docker service logs test_<stack-name>_<service-name>
 
 # Tear down
-docker compose down
+docker stack rm test_<stack-name>
+
+# For non-Swarm testing (like DNS stack)
+docker-compose up -d
+docker-compose logs -f
+docker-compose down
 ```
 
 ### Making Changes
@@ -572,6 +883,8 @@ Built with excellent open-source projects:
 - [Portainer](https://www.portainer.io/)
 - [Wazuh](https://wazuh.com/)
 - [Seafile](https://www.seafile.com/)
+- [Pi-hole](https://pi-hole.net/)
+- [Unbound](https://nlnetlabs.nl/projects/unbound/)
 - [Jellyfin](https://jellyfin.org/)
 - [Sonarr](https://sonarr.tv/), [Radarr](https://radarr.video/), [Prowlarr](https://prowlarr.com/)
 - [Gluetun](https://github.com/qdm12/gluetun)
