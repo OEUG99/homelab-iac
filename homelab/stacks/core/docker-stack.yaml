@@ -1,0 +1,100 @@
+version: "3.9"
+
+# --- Swarm Networks ---
+# Overlay network is required for multi-host communication and the Traefik routing mesh
+networks:
+  edge:
+    name: core_edge
+    driver: overlay
+    attachable: true # Allows non-service containers (like cloudflared) to connect (optional but good practice)
+
+# --- Swarm Volumes ---
+# External is used for persistent data that should exist beyond the stack lifecycle
+volumes:
+  portainer_data:
+    name: portainer_data
+    external: true # Assumes you will create this volume manually or it already exists
+
+# --- Secrets ---
+# It's best practice to use Swarm Secrets for sensitive data like tokens
+secrets:
+  cloudflare_tunnel_token:
+    external: true # Assumes you will create this secret manually
+
+# --- Services (The Containers) ---
+services:
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    # container_name is ignored in Swarm
+    restart: on-failure # Changed from unless-stopped to a swarm equivalent
+    command: tunnel --no-autoupdate run --token /run/secrets/cloudflare_tunnel_token
+    networks:
+      - edge
+    environment:
+      - TZ=${TZ}
+    secrets:
+      - source: cloudflare_tunnel_token # The name of the secret in the 'secrets' block
+        target: cloudflare_tunnel_token # The name of the file inside the container
+    deploy:
+      mode: replicated
+      replicas: 1 # Start with 1 replica, can be scaled later
+
+  traefik:
+    image: traefik:v3.1
+    # container_name is ignored in Swarm
+    restart: on-failure # Swarm equivalent
+    networks:
+      - edge
+    command:
+      - --providers.docker=true
+      - --providers.docker.exposedbydefault=false
+      - --providers.docker.swarmmode=true # <-- Crucial for Swarm to read service labels
+      - --providers.docker.network=core_edge
+      - --entrypoints.web.address=:80
+      - --api.dashboard=true
+      - --api.insecure=true
+      - --log.level=INFO
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    ports:
+      - target: 80
+        published: 80
+        protocol: tcp
+        mode: host # Use host mode to bypass the routing mesh if needed, or use 'ingress'
+      - target: 8080
+        published: 8080
+        protocol: tcp
+        mode: ingress
+    # Traefik labels for Swarm must be inside the `deploy` block
+    deploy:
+      mode: global # Recommended for Traefik to run on every node
+      labels:
+        # Traefik Dashboard exposure
+        - traefik.enable=true
+        - traefik.http.routers.traefik.rule=Host(`traefik.silentgarden.org`)
+        - traefik.http.routers.traefik.entrypoints=web
+        - traefik.http.routers.traefik.service=api@internal
+
+  portainer:
+    image: portainer/portainer-ce:latest
+    # container_name is ignored in Swarm
+    restart: on-failure # Swarm equivalent
+    networks:
+      - edge
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - portainer_data:/data
+    ports:
+      - target: 9000
+        published: 9000
+        protocol: tcp
+        mode: ingress
+    # Traefik labels for Swarm must be inside the `deploy` block
+    deploy:
+      mode: replicated
+      replicas: 1
+      labels:
+        - traefik.enable=true
+        - traefik.http.routers.portainer.rule=Host(`portainer.silentgarden.org`)
+        - traefik.http.routers.portainer.entrypoints=web
+        - traefik.http.services.portainer.loadbalancer.server.port=9000
