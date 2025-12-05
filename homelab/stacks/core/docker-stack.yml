@@ -73,6 +73,58 @@ services:
         - traefik.http.routers.traefik.entrypoints=web
         - traefik.http.routers.traefik.service=api@internal
 
+  pihole:
+    image: pihole/pihole:latest
+    # Pi-hole must be deployed as a global service to guarantee it runs on the manager node (your Mac)
+    # where the ports are published.
+    deploy:
+      mode: global
+      restart_policy:
+        condition: on-failure
+
+    environment:
+      TZ: ${TZ:-America/New_York}
+      WEBPASSWORD: ${PIHOLE_PASSWORD:-changeme}
+      DNS1: ${PIHOLE_DNS1:-1.1.1.1}
+      DNS2: ${PIHOLE_DNS2:-1.0.0.1}
+      # The IP address must be set here when not using host mode
+      PIHOLE_INTERFACE: eth0
+      # Ensure ports are exposed for Traefik and DNS
+      VIRTUAL_HOST: pihole.silentgarden.org
+      # The rest of the setup relies on Traefik for port 80/443
+
+    volumes:
+      - "${BASE_PATH}/config/pihole/etc-pihole:/etc/pihole"
+      - "${BASE_PATH}/config/pihole/etc-dnsmasq.d:/etc/dnsmasq.d"
+      - "${BASE_PATH}/config/pihole/logs:/var/log/pihole"
+
+    # --- Network and Port Configuration ---
+
+    # 1. Manually publish DNS port (53)
+    # This must be done manually because Traefik doesn't handle UDP/TCP on 53 well.
+    ports:
+      - target: 53
+        published: 53
+        protocol: tcp
+        mode: host
+      - target: 53
+        published: 53
+        protocol: udp
+        mode: host
+
+    # 2. Add Traefik labels for the Web UI (Port 80)
+    labels:
+      - "traefik.enable=true"
+      # Router for HTTP (Port 80) - we assume Traefik redirects HTTP to HTTPS
+      - "traefik.http.routers.pihole.entrypoints=web"
+      - "traefik.http.routers.pihole.rule=Host(`pihole.silentgarden.org`)"
+      # Service definition
+      - "traefik.http.services.pihole.loadbalancer.server.port=80"
+
+    # 3. Connect to an overlay network for Traefik to access it
+    networks:
+      - core_edge
+
   portainer:
     image: portainer/portainer-ce:latest
     restart: on-failure
