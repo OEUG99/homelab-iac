@@ -1,28 +1,33 @@
 version: "3.9"
 
 # --- Swarm Networks ---
-# Overlay network is required for multi-host communication and the Traefik routing mesh
 networks:
+  # The overlay network for all service communication
   edge:
     name: edge
     driver: overlay
     attachable: true
 
 # --- Swarm Volumes ---
-# External is used for persistent data that should exist beyond the stack lifecycle
 volumes:
   portainer_data:
     name: portainer_data
-    external: true # Assumes you will create this volume manually or it already exists
+    external: true
 
 # --- Secrets ---
-# It's best practice to use Swarm Secrets for sensitive data like tokens
 secrets:
   cloudflare_tunnel_token:
-    external: true # Assumes you will create this secret manually
+    external: true
 
-# --- Services (The Containers) ---
+# ============================================================================
+# Services
+# ============================================================================
+
 services:
+
+  # --------------------------------------------------------------------------
+  # CLOUDFLARED (Tunnel Endpoint)
+  # --------------------------------------------------------------------------
   cloudflared:
     image: cloudflare/cloudflared:latest
     restart: on-failure
@@ -38,6 +43,9 @@ services:
       mode: replicated
       replicas: 1
 
+  # --------------------------------------------------------------------------
+  # TRAEFIK (Reverse Proxy and Entrypoint)
+  # --------------------------------------------------------------------------
   traefik:
     image: traefik:v3.1
     restart: on-failure
@@ -46,8 +54,8 @@ services:
     command:
       - --providers.docker=true
       - --providers.docker.exposedbydefault=false
-      # FIX APPLIED: Removed the deprecated --providers.docker.swarmmode=true
-      - --providers.docker.network=core_edge
+      # FIX 1: Traefik must point to the *name* of the network it's connected to.
+      - --providers.docker.network=edge
       - --entrypoints.web.address=:80
       - --api.dashboard=true
       - --api.insecure=true
@@ -55,28 +63,33 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
     ports:
+      # FIX 2: Traefik requires Host mode ports for the entrypoints (80, 443)
+      # when running as a global service to guarantee traffic reaches it on every node.
       - target: 80
         published: 80
         protocol: tcp
         mode: host
+      # Traefik Dashboard port, for monitoring/API access
       - target: 8080
         published: 8080
         protocol: tcp
         mode: ingress
-    # Traefik labels for Swarm must be inside the `deploy` block
     deploy:
-      mode: global
+      mode: global # Ensures Traefik runs on all nodes
       labels:
-        # Traefik Dashboard exposure
+        # Traefik Dashboard exposure (using internal service)
         - traefik.enable=true
         - traefik.http.routers.traefik.rule=Host(`traefik.silentgarden.org`)
         - traefik.http.routers.traefik.entrypoints=web
         - traefik.http.routers.traefik.service=api@internal
 
+  # --------------------------------------------------------------------------
+  # PIHOLE (DNS and Web Interface)
+  # --------------------------------------------------------------------------
   pihole:
     image: pihole/pihole:latest
-    # Pi-hole must be deployed as a global service to guarantee it runs on the manager node (your Mac)
-    # where the ports are published.
+    # Pi-hole should generally be deployed on a specific node or as a single replica.
+    # We keep 'global' as you specified, but it's only truly functional where the ports are open.
     deploy:
       mode: global
       restart_policy:
@@ -87,21 +100,19 @@ services:
       WEBPASSWORD: ${PIHOLE_PASSWORD:-changeme}
       DNS1: ${PIHOLE_DNS1:-1.1.1.1}
       DNS2: ${PIHOLE_DNS2:-1.0.0.1}
-      # The IP address must be set here when not using host mode
+      # FIX 3: PIHOLE_INTERFACE must be set to 'eth0' for bridge/overlay networking.
       PIHOLE_INTERFACE: eth0
-      # Ensure ports are exposed for Traefik and DNS
-      VIRTUAL_HOST: pihole.silentgarden.org
-      # The rest of the setup relies on Traefik for port 80/443
+      # FIX 4: Set the correct environment variable for the internal IP address.
+      # This is crucial to avoid the 404 error when Traefik forwards the request.
+      FTLCONF_LOCAL_IPV4: 192.168.10.133 # Use your intended Host IP here.
+      # Removed VIRTUAL_HOST and other web-related ENV vars as Traefik handles routing.
 
     volumes:
       - "${BASE_PATH}/config/pihole/etc-pihole:/etc/pihole"
       - "${BASE_PATH}/config/pihole/etc-dnsmasq.d:/etc/dnsmasq.d"
       - "${BASE_PATH}/config/pihole/logs:/var/log/pihole"
 
-    # --- Network and Port Configuration ---
-
     # 1. Manually publish DNS port (53)
-    # This must be done manually because Traefik doesn't handle UDP/TCP on 53 well.
     ports:
       - target: 53
         published: 53
@@ -115,16 +126,23 @@ services:
     # 2. Add Traefik labels for the Web UI (Port 80)
     labels:
       - "traefik.enable=true"
-      # Router for HTTP (Port 80) - we assume Traefik redirects HTTP to HTTPS
+      # Router for HTTP
       - "traefik.http.routers.pihole.entrypoints=web"
       - "traefik.http.routers.pihole.rule=Host(`pihole.silentgarden.org`)"
       # Service definition
+      # FIX 5: Use the correct internal port for Pi-hole's web interface (it's 80).
       - "traefik.http.services.pihole.loadbalancer.server.port=80"
+      # FIX 6: Add a path prefix for the Pi-hole web UI. This is critical for the 404 fix.
+      - "traefik.http.routers.pihole.middlewares=pihole-strip@docker"
+      - "traefik.http.middlewares.pihole-strip.stripprefix.prefixes=/admin"
 
-    # 3. Connect to an overlay network for Traefik to access it
+    # 3. Connect to the overlay network
     networks:
       - edge
 
+  # --------------------------------------------------------------------------
+  # PORTAINER (Swarm Management UI)
+  # --------------------------------------------------------------------------
   portainer:
     image: portainer/portainer-ce:latest
     restart: on-failure
@@ -138,7 +156,6 @@ services:
         published: 9000
         protocol: tcp
         mode: ingress
-    # Traefik labels for Swarm must be inside the `deploy` block
     deploy:
       mode: replicated
       replicas: 1
