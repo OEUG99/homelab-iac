@@ -4,7 +4,7 @@ version: "3.9"
 # Overlay network is required for multi-host communication and the Traefik routing mesh
 networks:
   edge:
-    name: core_edge
+    name: edge
     driver: overlay
     attachable: true
 
@@ -123,7 +123,7 @@ services:
 
     # 3. Connect to an overlay network for Traefik to access it
     networks:
-      - core_edge
+      - edge
 
   portainer:
     image: portainer/portainer-ce:latest
