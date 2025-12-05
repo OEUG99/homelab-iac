@@ -54,8 +54,9 @@ services:
     command:
       - --providers.docker=true
       - --providers.docker.exposedbydefault=false
-      - --providers.docker.network=core_edge  # FIXED: Added 'core_' prefix
-      - --providers.docker.swarmMode=true     # ADDED: Enable Swarm mode
+      - --providers.docker.network=core_edge
+      - --providers.swarm=true                 # FIXED: Use Swarm provider for v3
+      - --providers.swarm.exposedbydefault=false
       - --entrypoints.web.address=:80
       - --api.dashboard=true
       - --api.insecure=true
