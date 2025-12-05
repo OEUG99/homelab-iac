@@ -28,7 +28,7 @@ services:
       - "${BASE_PATH}/config/pihole/etc-pihole:/etc/pihole"
       - "${BASE_PATH}/config/pihole/etc-dnsmasq.d:/etc/dnsmasq.d"
       - "${BASE_PATH}/config/pihole/logs:/var/log/pihole"
-      - "${BASE_PATH}/config/pihole/pihole-etc-hosts:/etc/hosts" # optional, if you manage /etc/hosts
+      # - "${BASE_PATH}/config/pihole/pihole-etc-hosts:/etc/hosts" # optional, if you manage /etc/hosts
     networks:
       - bridge
       - edge
