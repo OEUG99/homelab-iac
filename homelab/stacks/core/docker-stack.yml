@@ -6,7 +6,7 @@ networks:
   edge:
     name: core_edge
     driver: overlay
-    attachable: true # Allows non-service containers (like cloudflared) to connect (optional but good practice)
+    attachable: true
 
 # --- Swarm Volumes ---
 # External is used for persistent data that should exist beyond the stack lifecycle
@@ -25,30 +25,28 @@ secrets:
 services:
   cloudflared:
     image: cloudflare/cloudflared:latest
-    # container_name is ignored in Swarm
-    restart: on-failure # Changed from unless-stopped to a swarm equivalent
+    restart: on-failure
     command: tunnel --no-autoupdate run --token /run/secrets/cloudflare_tunnel_token
     networks:
       - edge
     environment:
       - TZ=${TZ}
     secrets:
-      - source: cloudflare_tunnel_token # The name of the secret in the 'secrets' block
-        target: cloudflare_tunnel_token # The name of the file inside the container
+      - source: cloudflare_tunnel_token
+        target: cloudflare_tunnel_token
     deploy:
       mode: replicated
-      replicas: 1 # Start with 1 replica, can be scaled later
+      replicas: 1
 
   traefik:
     image: traefik:v3.1
-    # container_name is ignored in Swarm
-    restart: on-failure # Swarm equivalent
+    restart: on-failure
     networks:
       - edge
     command:
       - --providers.docker=true
       - --providers.docker.exposedbydefault=false
-      - --providers.docker.swarmmode=true # <-- Crucial for Swarm to read service labels
+      # FIX APPLIED: Removed the deprecated --providers.docker.swarmmode=true
       - --providers.docker.network=core_edge
       - --entrypoints.web.address=:80
       - --api.dashboard=true
@@ -60,14 +58,14 @@ services:
       - target: 80
         published: 80
         protocol: tcp
-        mode: host # Use host mode to bypass the routing mesh if needed, or use 'ingress'
+        mode: host
       - target: 8080
         published: 8080
         protocol: tcp
         mode: ingress
     # Traefik labels for Swarm must be inside the `deploy` block
     deploy:
-      mode: global # Recommended for Traefik to run on every node
+      mode: global
       labels:
         # Traefik Dashboard exposure
         - traefik.enable=true
@@ -77,8 +75,7 @@ services:
 
   portainer:
     image: portainer/portainer-ce:latest
-    # container_name is ignored in Swarm
-    restart: on-failure # Swarm equivalent
+    restart: on-failure
     networks:
       - edge
     volumes:
