@@ -236,8 +236,10 @@ services:
         constraints:
           - node.role == manager
       restart_policy:
-        condition: unless-stopped
+        condition: any
         delay: 10s
+        max_attempts: 3
+        window: 120s
       update_config:
         parallelism: 1
         delay: 30s
