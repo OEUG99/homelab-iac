@@ -1,147 +1,299 @@
 version: "3.9"
 
-# --- Swarm Networks ---
+# ============================================================================
+# NETWORKS
+# ============================================================================
 networks:
   edge:
     name: edge
     driver: overlay
     attachable: true
+    driver_opts:
+      encrypted: "true"
 
-# --- Swarm Volumes ---
+# ============================================================================
+# VOLUMES
+# ============================================================================
 volumes:
   portainer_data:
     name: portainer_data
-    external: true
+    driver: local
   pihole_data:
     name: pihole_data
     driver: local
+  pihole_dnsmasq:
+    name: pihole_dnsmasq
+    driver: local
 
-# --- Secrets ---
+# ============================================================================
+# SECRETS
+# ============================================================================
 secrets:
   cloudflare_tunnel_token:
     external: true
 
 # ============================================================================
-# Services
+# SERVICES
 # ============================================================================
-
 services:
 
   # --------------------------------------------------------------------------
-  # CLOUDFLARED (Tunnel Endpoint)
+  # CLOUDFLARED - Cloudflare Tunnel
+  # Handles secure external access via Cloudflare
   # --------------------------------------------------------------------------
   cloudflared:
     image: cloudflare/cloudflared:latest
-    restart: on-failure
+    hostname: cloudflared
     command: tunnel --no-autoupdate run --token /run/secrets/cloudflare_tunnel_token
     networks:
       - edge
     environment:
-      - TZ=${TZ}
+      - TZ=${TZ:-UTC}
     secrets:
-      - source: cloudflare_tunnel_token
-        target: cloudflare_tunnel_token
+      - cloudflare_tunnel_token
     deploy:
       mode: replicated
       replicas: 1
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+        window: 120s
+      update_config:
+        parallelism: 1
+        delay: 10s
+        failure_action: rollback
+      resources:
+        limits:
+          cpus: '0.50'
+          memory: 128M
+        reservations:
+          cpus: '0.25'
+          memory: 64M
 
   # --------------------------------------------------------------------------
-  # TRAEFIK (Reverse Proxy and Entrypoint)
+  # TRAEFIK - Reverse Proxy
+  # Central routing for all HTTP services
+  # Uses HOST mode for reliable direct access
   # --------------------------------------------------------------------------
   traefik:
     image: traefik:v3.1
-    restart: on-failure
+    hostname: traefik-{{.Node.Hostname}}
     networks:
       - edge
     command:
+      # Docker Provider
       - --providers.docker=true
+      - --providers.docker.swarmMode=true
       - --providers.docker.exposedbydefault=false
       - --providers.docker.network=edge
+      - --providers.docker.watch=true
+      # Entrypoints
       - --entrypoints.web.address=:80
+      - --entrypoints.websecure.address=:443
+      # API/Dashboard
       - --api.dashboard=true
       - --api.insecure=true
+      # Logging
       - --log.level=INFO
+      - --accesslog=false
+      # Health
+      - --ping=true
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
     ports:
+      # HTTP - HOST mode ensures direct IP access works
       - target: 80
         published: 80
         protocol: tcp
         mode: host
+      # HTTPS - for future use
+      - target: 443
+        published: 443
+        protocol: tcp
+        mode: host
+      # Dashboard - HOST mode for direct access
       - target: 8080
         published: 8080
         protocol: tcp
-        mode: ingress
+        mode: host
     deploy:
-      mode: global
+      mode: global  # One instance per node
+      placement:
+        constraints:
+          - node.role == manager
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+      update_config:
+        parallelism: 1
+        delay: 10s
+        failure_action: rollback
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 256M
+        reservations:
+          cpus: '0.5'
+          memory: 128M
       labels:
+        # Enable Traefik for itself
         - traefik.enable=true
         - traefik.docker.network=edge
-        - 'traefik.http.routers.traefik.rule=Host(`traefik.silentgarden.org`)'
-        - traefik.http.routers.traefik.entrypoints=web
-        - traefik.http.routers.traefik.service=api@internal
+        # Dashboard router
+        - traefik.http.routers.traefik-dashboard.rule=Host(`traefik.silentgarden.org`)
+        - traefik.http.routers.traefik-dashboard.entrypoints=web
+        - traefik.http.routers.traefik-dashboard.service=api@internal
+        # Dummy service for Swarm (required even though we use api@internal)
+        - traefik.http.services.traefik-dummy.loadbalancer.server.port=8080
 
   # --------------------------------------------------------------------------
-  # PORTAINER (Swarm Management UI)
+  # PORTAINER - Container Management UI
+  # Accessed ONLY via Traefik for clean architecture
+  # No direct port exposure - reduces attack surface
   # --------------------------------------------------------------------------
   portainer:
     image: portainer/portainer-ce:latest
-    restart: on-failure
+    hostname: portainer
     networks:
       - edge
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
+      - /var/run/docker.sock:/var/run/docker.sock:ro
       - portainer_data:/data
-    ports:
-      - target: 9000
-        published: 9000
-        protocol: tcp
-        mode: ingress
+    environment:
+      - TZ=${TZ:-UTC}
     deploy:
       mode: replicated
       replicas: 1
+      placement:
+        constraints:
+          - node.role == manager
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+      update_config:
+        parallelism: 1
+        delay: 10s
+        failure_action: rollback
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
       labels:
         - traefik.enable=true
         - traefik.docker.network=edge
-        - 'traefik.http.routers.portainer.rule=Host(`portainer.silentgarden.org`)'
+        # HTTP router
+        - traefik.http.routers.portainer.rule=Host(`portainer.silentgarden.org`)
         - traefik.http.routers.portainer.entrypoints=web
+        - traefik.http.routers.portainer.service=portainer
+        # Service definition
         - traefik.http.services.portainer.loadbalancer.server.port=9000
+        - traefik.http.services.portainer.loadbalancer.server.scheme=http
 
   # --------------------------------------------------------------------------
-  # PIHOLE (DNS + Web UI)
+  # PI-HOLE - Network-wide Ad Blocking
+  # DNS on 53 uses HOST mode for proper functionality
+  # Web UI accessed via Traefik
   # --------------------------------------------------------------------------
   pihole:
     image: pihole/pihole:latest
-    restart: unless-stopped
+    hostname: pihole
     networks:
       - edge
     environment:
-      - TZ=${TZ}
-      - WEBPASSWORD=${PIHOLE_PASSWORD}   # set your password in .env
-      - DNS1=1.1.1.1
-      - DNS2=1.0.0.1
+      - TZ=${TZ:-UTC}
+      - WEBPASSWORD=${PIHOLE_PASSWORD:-changeme}
+      - FTLCONF_LOCAL_IPV4=${PIHOLE_HOST_IP:-192.168.1.100}
+      - PIHOLE_DNS_=1.1.1.1;1.0.0.1
+      - DNSSEC=false
+      - DNSMASQ_LISTENING=all
+      - VIRTUAL_HOST=pihole.silentgarden.org
+      - WEB_PORT=80
     volumes:
       - pihole_data:/etc/pihole
-      - pihole_data:/etc/dnsmasq.d
+      - pihole_dnsmasq:/etc/dnsmasq.d
+    # DNS ports MUST use host mode for proper resolution
     ports:
+      # DNS TCP - HOST mode required
       - target: 53
         published: 53
         protocol: tcp
-        mode: ingress
+        mode: host
+      # DNS UDP - HOST mode required
       - target: 53
         published: 53
         protocol: udp
-        mode: ingress
-      - target: 80
-        published: 8081
-        protocol: tcp
-        mode: ingress
+        mode: host
     deploy:
       mode: replicated
       replicas: 1
+      placement:
+        constraints:
+          - node.role == manager
+      restart_policy:
+        condition: unless-stopped
+        delay: 10s
+      update_config:
+        parallelism: 1
+        delay: 30s
+        failure_action: rollback
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
       labels:
         - traefik.enable=true
         - traefik.docker.network=edge
-        - 'traefik.http.routers.pihole.rule=Host(`pihole.silentgarden.org`)'
+        # HTTP router for web UI
+        - traefik.http.routers.pihole.rule=Host(`pihole.silentgarden.org`)
         - traefik.http.routers.pihole.entrypoints=web
+        - traefik.http.routers.pihole.service=pihole
+        # Service definition - targets internal port 80
         - traefik.http.services.pihole.loadbalancer.server.port=80
+        - traefik.http.services.pihole.loadbalancer.server.scheme=http
+        # Middleware for admin path
+        - traefik.http.middlewares.pihole-prefix.addprefix.prefix=/admin
+
+# ============================================================================
+# DEPLOYMENT NOTES
+# ============================================================================
+#
+# 1. CREATE SECRETS FIRST:
+#    echo "your-tunnel-token" | docker secret create cloudflare_tunnel_token -
+#
+# 2. CREATE .env FILE:
+#    TZ=America/New_York
+#    PIHOLE_PASSWORD=your-secure-password
+#    PIHOLE_HOST_IP=192.168.1.100
+#
+# 3. INITIALIZE VOLUMES (optional):
+#    docker volume create portainer_data
+#
+# 4. DEPLOY:
+#    docker stack deploy -c docker-compose.yml edge
+#
+# 5. ACCESS SERVICES:
+#    - Traefik Dashboard: http://YOUR_IP:8080 OR http://traefik.silentgarden.org
+#    - Portainer: http://portainer.silentgarden.org
+#    - Pi-hole: http://pihole.silentgarden.org/admin
+#
+# 6. DNS SETUP:
+#    Add to your /etc/hosts or local DNS:
+#    YOUR_IP  traefik.silentgarden.org
+#    YOUR_IP  portainer.silentgarden.org
+#    YOUR_IP  pihole.silentgarden.org
+#
+# 7. VERIFICATION:
+#    docker stack ps edge
+#    docker service ls
+#    curl http://YOUR_IP:8080/ping  # Should return 200
+#
+# ============================================================================
